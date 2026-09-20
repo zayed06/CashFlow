@@ -27,13 +27,24 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.url.startsWith('/api/')) return await handleApi(request, response);
     if (request.url === '/login' || request.url === '/signup') {
-      const file = await fs.promises.readFile(path.join(frontend, 'auth.html'));
+      let file = await fs.promises.readFile(path.join(frontend, 'auth.html'), 'utf-8');
+      file = file.replace('__GOOGLE_CLIENT_ID__', process.env.GOOGLE_CLIENT_ID || '');
       response.writeHead(200, { 'Content-Type': mime['.html'] });
       return response.end(file);
     }
 
     let requestPath = new URL(request.url, `http://localhost:${port}`).pathname;
     if (requestPath === '/') requestPath = '/index.html';
+    
+    if (requestPath === '/index.html') {
+      const { getCurrentUser } = await import('./auth.js');
+      const user = await getCurrentUser(request);
+      if (!user) {
+        response.writeHead(302, { 'Location': '/login' });
+        return response.end();
+      }
+    }
+
     const filePath = path.normalize(path.join(frontend, requestPath));
     if (!filePath.startsWith(frontend)) return send404(response);
     const file = await fs.promises.readFile(filePath);
@@ -58,6 +69,33 @@ async function migrateLegacyData() {
       { $or: [{ userId: { $exists: false } }, { userId: null }] },
       { $set: { userId: owner._id } }
     );
+  }
+
+  // Migrate old Expenses and CashAdjustments to Transactions
+  const { default: Transaction } = await import('./models/Transaction.js');
+  const count = await Transaction.countDocuments();
+  if (count === 0) {
+    console.log('Migrating old records to Transaction model...');
+    const allExpenses = await Expense.find();
+    for (const e of allExpenses) {
+      await Transaction.create({ userId: e.userId, type: 'expense', amount: e.amount, description: e.description || 'Expense', date: e.date, createdAt: e.createdAt });
+    }
+    const allAdjustments = await CashAdjustment.find();
+    for (const a of allAdjustments) {
+      await Transaction.create({ userId: a.userId, type: a.type === 'add' ? 'add_money' : 'deduct_money', amount: a.amount, description: a.type === 'add' ? 'Added Money' : 'Deducted Money', date: a.date, createdAt: a.createdAt });
+    }
+    const allLoans = await Loan.find();
+    for (const l of allLoans) {
+      await Transaction.create({ userId: l.userId, type: 'loan_given', amount: l.amount, description: `Loan to ${l.person}`, date: l.date, createdAt: l.createdAt, relatedId: l._id });
+      if (l.repaidAmount > 0) {
+         await Transaction.create({ userId: l.userId, type: 'loan_repayment', amount: l.repaidAmount, description: `Repayment from ${l.person}`, date: l.updatedAt || l.createdAt, createdAt: l.updatedAt || l.createdAt, relatedId: l._id });
+      }
+    }
+    const allSubs = await Subscription.find();
+    for (const s of allSubs) {
+      await Transaction.create({ userId: s.userId, type: 'subscription', amount: s.amount, description: s.name, date: s.createdAt, createdAt: s.createdAt, relatedId: s._id });
+    }
+    console.log('Migration complete.');
   }
 }
 

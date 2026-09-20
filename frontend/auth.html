@@ -38,9 +38,29 @@
           <button class="primary-button auth-submit" type="submit">Create account</button>
         </form>
       </div>
+
+      <div class="google-auth-container" style="margin-top: 24px; display: flex; justify-content: center;">
+        <div id="g_id_onload"
+          data-client_id="__GOOGLE_CLIENT_ID__"
+          data-context="signin"
+          data-ux_mode="popup"
+          data-callback="handleCredentialResponse"
+          data-auto_prompt="false">
+        </div>
+        <div class="g_id_signin"
+          data-type="standard"
+          data-shape="rectangular"
+          data-theme="outline"
+          data-text="signin_with"
+          data-size="large"
+          data-logo_alignment="left">
+        </div>
+      </div>
+
       <p id="authMessage" class="auth-message"></p>
     </section>
   </main>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="/js/auth.js"></script>
 </body>
 </html>

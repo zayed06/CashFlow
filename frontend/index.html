@@ -6,18 +6,35 @@
   <title>CashFlow</title>
   <link rel="stylesheet" href="/css/styles.css">
 </head>
-<body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <div class="brand-icon">$</div>
-        <div><h1>CashFlow</h1><p>Your money, in one place</p></div>
+<body style="display: none;">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">$</div>
+          <div><h1>CashFlow</h1><p>Your money, in one place</p></div>
+        </div>
       </div>
-      <div class="top-actions"><span id="today"></span><span id="userName" class="user-name"></span><button id="logoutButton" class="logout-button">Log out</button><button id="themeButton" class="icon-button" title="Toggle theme">◐</button></div>
-    </div>
-  </header>
+      <nav class="sidebar-nav">
+        <button class="sidebar-tab tab active" data-tab="analytics">📊 <span>Dashboard</span></button>
+        <button class="sidebar-tab tab" data-tab="transactions">▣ <span>Transactions</span></button>
+        <button class="sidebar-tab tab" data-tab="subscriptions">↻ <span>Subscriptions</span></button>
+        <button class="sidebar-tab tab" data-tab="loans">♧ <span>Lent</span></button>
+      </nav>
+    </aside>
 
-  <main class="container">
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <div class="brand-mobile">
+            <div class="brand-icon">$</div>
+            <div><h1>CashFlow</h1></div>
+          </div>
+          <div class="top-actions"><span id="today"></span><span id="userName" class="user-name"></span><button id="logoutButton" class="logout-button">Log out</button><button id="themeButton" class="icon-button" title="Toggle theme">◐</button></div>
+        </div>
+      </header>
+
+      <main class="container">
     <section class="balance-card">
       <div class="balance-top">
         <div><p class="eyebrow">CURRENT BALANCE</p><div id="balance" class="balance">₹0.00</div><p id="spent" class="muted">Spent ₹0.00</p></div>
@@ -30,24 +47,53 @@
     </section>
 
 
-    <nav class="tabs">
-      <button class="tab active" data-tab="expenses">▣ <span>Expenses</span></button>
-      <button class="tab" data-tab="subscriptions">↻ <span>Subscriptions</span></button>
-      <button class="tab" data-tab="loans">♧ <span>Lent</span></button>
-    </nav>
 
-    <section id="expenses" class="tab-panel active">
-      <div class="card"><div class="card-title">Log an expense</div>
+
+    <section id="analytics" class="tab-panel active">
+      <div class="card">
+        <div class="card-title">Monthly Summary (This Month)</div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; margin-top: 1rem;">
+          <div><p class="muted" style="font-size:0.8rem">Income/Added</p><strong id="summaryIncome" style="color:var(--success)">₹0</strong></div>
+          <div><p class="muted" style="font-size:0.8rem">Total Spent</p><strong id="summarySpent">₹0</strong></div>
+          <div><p class="muted" style="font-size:0.8rem">Subs Processed</p><strong id="summarySubs">₹0</strong></div>
+          <div><p class="muted" style="font-size:0.8rem">Money Lent</p><strong id="summaryLent">₹0</strong></div>
+          <div><p class="muted" style="font-size:0.8rem">Repayments</p><strong id="summaryRepayments" style="color:var(--success)">₹0</strong></div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="card-title">Loan Information</div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem;">
+          <div><p class="muted" style="font-size:0.8rem">Total Lent</p><strong id="loanTotal">₹0</strong></div>
+          <div><p class="muted" style="font-size:0.8rem">Repayments</p><strong id="loanRepaid">₹0</strong></div>
+          <div><p class="muted" style="font-size:0.8rem">Outstanding</p><strong id="loanOutstanding">₹0</strong></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Spending Breakdown</div>
+        <canvas id="spendingChart" width="400" height="200" style="margin-top:1rem;max-height:250px"></canvas>
+      </div>
+
+      <div class="section-heading">Upcoming Subscriptions</div>
+      <div id="upcomingSubList"></div>
+    </section>
+
+    <section id="transactions" class="tab-panel">
+      <div class="card"><div class="card-title">Log a transaction</div>
         <form id="expenseForm" class="form-grid">
-          <input id="expenseDescription" placeholder="What did you spend on?" required>
+          <select id="expenseType" required style="grid-column: 1 / -1; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+             <option value="expense">Expense</option>
+             <option value="income">Income</option>
+          </select>
+          <input id="expenseDescription" placeholder="Description" required>
           <input id="expenseAmount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
-          <input id="expenseCategory" placeholder="Category" value="Other">
           <input id="expenseDate" type="date" required>
-          <button class="primary-button" type="submit">Add Expense</button>
+          <button id="addTransactionBtn" class="primary-button" type="submit">Add Transaction</button>
         </form>
       </div>
-      <div class="section-heading">Recent <span id="expenseCount"></span></div>
-      <div id="expenseList"></div>
+      <div class="section-heading">Recent Transactions</div>
+      <div id="transactionList"></div>
     </section>
 
     <section id="subscriptions" class="tab-panel">
@@ -73,10 +119,13 @@
       <div class="section-heading">Money lent</div><div id="loanList"></div>
     </section>
   </main>
+  </div>
+  </div>
 
   <dialog id="moneyDialog"><div class="dialog"><h2 id="moneyTitle">Add Money</h2><p class="muted">Enter the amount you want to record.</p><form id="moneyForm"><input id="moneyAmount" type="number" min="0.01" step="0.01" placeholder="₹ Amount" required><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelMoney">Cancel</button><button class="primary-button" id="saveMoney">Save</button></div></form></div></dialog>
 
   <div id="toast" class="toast"></div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

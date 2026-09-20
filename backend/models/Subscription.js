@@ -4,6 +4,7 @@ const schema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   amount: { type: Number, required: true, min: 0 },
   date: { type: String, required: true },
-  active: { type: Boolean, default: true }
+  active: { type: Boolean, default: true },
+  processed: { type: Boolean, default: false }
 }, { timestamps: true });
 export default mongoose.model('Subscription', schema);

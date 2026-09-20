@@ -38,3 +38,16 @@ $('signupForm').onsubmit = async e => {
 
 fetch('/api/auth/me').then(r => { if (r.ok) location.href = '/'; });
 setMode(location.pathname === '/signup' ? 'signup' : 'login');
+
+window.handleCredentialResponse = async (response) => {
+  try {
+    const { credential } = response;
+    await api('google', {
+      method: 'POST',
+      body: JSON.stringify({ credential })
+    });
+    location.href = '/';
+  } catch (error) {
+    $('authMessage').textContent = error.message || 'Google authentication failed';
+  }
+};
