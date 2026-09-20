@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CashFlow - Welcome</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <div class="auth-brand">
+      <div class="brand-icon">$</div>
+      <div><h1>CashFlow</h1><p>Your money, in one place</p></div>
+    </div>
+
+    <section class="auth-card">
+      <div class="auth-tabs">
+        <button id="loginTab" class="auth-tab active">Log in</button>
+        <button id="signupTab" class="auth-tab">Sign up</button>
+      </div>
+
+      <div id="loginView">
+        <div class="auth-heading"><h2>Welcome back</h2><p>Log in to access your finances.</p></div>
+        <form id="loginForm" class="auth-form">
+          <label>Email<input id="loginEmail" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+          <label>Password<input id="loginPassword" type="password" autocomplete="current-password" placeholder="Your password" required></label>
+          <button class="primary-button auth-submit" type="submit">Log in</button>
+        </form>
+      </div>
+
+      <div id="signupView" hidden>
+        <div class="auth-heading"><h2>Create your account</h2><p>Start managing your money with CashFlow.</p></div>
+        <form id="signupForm" class="auth-form">
+          <label>Name<input id="signupName" type="text" autocomplete="name" placeholder="Your name" required></label>
+          <label>Email<input id="signupEmail" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+          <label>Password<input id="signupPassword" type="password" autocomplete="new-password" placeholder="At least 8 characters" minlength="8" required></label>
+          <label>Confirm password<input id="signupConfirm" type="password" autocomplete="new-password" placeholder="Repeat your password" minlength="8" required></label>
+          <button class="primary-button auth-submit" type="submit">Create account</button>
+        </form>
+      </div>
+      <p id="authMessage" class="auth-message"></p>
+    </section>
+  </main>
+  <script src="/js/auth.js"></script>
+</body>
+</html>

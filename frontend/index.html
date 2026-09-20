@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CashFlow</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-icon">$</div>
+        <div><h1>CashFlow</h1><p>Your money, in one place</p></div>
+      </div>
+      <div class="top-actions"><span id="today"></span><span id="userName" class="user-name"></span><button id="logoutButton" class="logout-button">Log out</button><button id="themeButton" class="icon-button" title="Toggle theme">◐</button></div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="balance-card">
+      <div class="balance-top">
+        <div><p class="eyebrow">CURRENT BALANCE</p><div id="balance" class="balance">₹0.00</div><p id="spent" class="muted">Spent ₹0.00</p></div>
+        
+      </div>
+      <div class="money-actions">
+        <button id="addMoney" class="money-button add">＋ Add Money</button>
+        <button id="deductMoney" class="money-button deduct">− Deduct Money</button>
+      </div>
+    </section>
+
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="expenses">▣ <span>Expenses</span></button>
+      <button class="tab" data-tab="subscriptions">↻ <span>Subscriptions</span></button>
+      <button class="tab" data-tab="loans">♧ <span>Lent</span></button>
+    </nav>
+
+    <section id="expenses" class="tab-panel active">
+      <div class="card"><div class="card-title">Log an expense</div>
+        <form id="expenseForm" class="form-grid">
+          <input id="expenseDescription" placeholder="What did you spend on?" required>
+          <input id="expenseAmount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
+          <input id="expenseCategory" placeholder="Category" value="Other">
+          <input id="expenseDate" type="date" required>
+          <button class="primary-button" type="submit">Add Expense</button>
+        </form>
+      </div>
+      <div class="section-heading">Recent <span id="expenseCount"></span></div>
+      <div id="expenseList"></div>
+    </section>
+
+    <section id="subscriptions" class="tab-panel">
+      <div class="card"><div class="card-title">Add a subscription</div>
+        <form id="subscriptionForm" class="form-grid">
+          <input id="subscriptionName" placeholder="Subscription name" required>
+          <input id="subscriptionAmount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
+          <input id="subscriptionDate" type="date" required>
+          <button class="primary-button" type="submit">Add Subscription</button>
+        </form>
+      </div>
+      <div class="section-heading">Subscriptions</div><div id="subscriptionList"></div>
+    </section>
+
+    <section id="loans" class="tab-panel">
+      <div class="card"><div class="card-title">Record money lent</div>
+        <form id="loanForm" class="form-grid">
+          <input id="loanPerson" placeholder="Person" required>
+          <input id="loanAmount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
+          <button class="primary-button" type="submit">Add Lent Money</button>
+        </form>
+      </div>
+      <div class="section-heading">Money lent</div><div id="loanList"></div>
+    </section>
+  </main>
+
+  <dialog id="moneyDialog"><div class="dialog"><h2 id="moneyTitle">Add Money</h2><p class="muted">Enter the amount you want to record.</p><form id="moneyForm"><input id="moneyAmount" type="number" min="0.01" step="0.01" placeholder="₹ Amount" required><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelMoney">Cancel</button><button class="primary-button" id="saveMoney">Save</button></div></form></div></dialog>
+
+  <div id="toast" class="toast"></div>
+  <script src="/js/app.js"></script>
+</body>
+</html>
