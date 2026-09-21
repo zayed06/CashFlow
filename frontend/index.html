@@ -344,6 +344,22 @@
 </select><div class="dialog-actions" style="margin-top:18px;"><button type="button" class="secondary-button" onclick="$('editTxDialog').close()">Cancel</button><button class="primary-button" type="submit">Save</button></div></form></div></dialog>
 
 
+  
+  <dialog id="payCCDialog">
+    <div class="dialog">
+      <h2>Pay Bill</h2>
+      <p class="muted" id="payCCSubtitle"></p>
+      <form id="payCCForm">
+        <input type="hidden" id="payCCId">
+        <input id="payCCAmount" type="number" min="0" step="0.01" placeholder="Payment Amount" required style="margin-top:10px;">
+        <div class="dialog-actions" style="margin-top:18px;">
+          <button type="button" class="secondary-button" onclick="document.getElementById('payCCDialog').close()">Cancel</button>
+          <button class="primary-button" type="submit">Make Payment</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
   <dialog id="ccDialog">
   <div class="dialog">
     <h2 id="ccTitle">Add Credit Card</h2>

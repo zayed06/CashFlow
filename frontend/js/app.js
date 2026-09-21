@@ -103,8 +103,18 @@ function renderTransactions(){
           const cCard = state.creditCards.find(c => c._id === t.creditCardId);
           paymentBadge = cCard ? ` • 💳 ${esc(cCard.name)} (•••• ${cCard.last4})` : ' • 💳 Credit Card';
       }
+    let renderTypeLabel = typeLabels[t.type] || t.type;
+    let amtSign = sign;
+    if (t.type === 'credit_card_payment') {
+        renderTypeLabel = 'Credit Card Payment';
+        amtSign = '-';
+        if (t.creditCardId) {
+            const cCard = state.creditCards.find(c => c._id === t.creditCardId);
+            paymentBadge = cCard ? ` • 💳 ${esc(cCard.name)} (•••• ${cCard.last4})` : ' • 💳 Credit Card';
+        }
+    }
     const editBtn = `<button class="delete" onclick="openEditTx('${t._id}')" style="color:var(--primary)">Edit</button>`;
-    return `<div class="item"><div class="item-main"><strong>${esc(t.description)}</strong><span>${typeLabels[t.type]} · ${new Date(t.date).toLocaleDateString('en-IN')}${catName}${paymentBadge}</span></div><div class="item-right"><span class="amount">${sign}${money(t.amount)}</span>${editBtn}<button class="delete" onclick="removeItem('transactions','${t._id}')">Delete</button></div></div>`
+    return `<div class="item"><div class="item-main"><strong>${esc(t.description)}</strong><span>${renderTypeLabel} · ${new Date(t.date).toLocaleDateString('en-IN')}${catName}${paymentBadge}</span></div><div class="item-right"><span class="amount">${amtSign}${money(t.amount)}</span>${editBtn}<button class="delete" onclick="removeItem('transactions','${t._id}')">Delete</button></div></div>`
   }).join('')||empty('No transactions found.')
 }
 
@@ -309,7 +319,11 @@ window.openEditTx = id => {
   $('editTxCategory').innerHTML = options;
   $('editTxCategory').style.display = ['expense', 'income', 'subscription'].includes(t.type) ? 'block' : 'none';
     
-    if (t.type === 'expense') {
+    if (t.type === 'credit_card_payment') {
+        $('editTxPaymentMethod').style.display = 'none';
+        $('editTxCreditCard').style.display = 'block';
+        $('editTxCreditCard').value = t.creditCardId || '';
+    } else if (t.type === 'expense') {
         $('editTxPaymentMethod').style.display = 'block';
         if (t.creditCardId) {
             $('editTxPaymentMethod').value = 'credit_card';
@@ -341,8 +355,8 @@ $('editTxForm').onsubmit = async e => {
     
       let creditCardId = undefined;
       const tOld = state.transactions.find(x => x._id === id);
-      if (tOld && tOld.type === 'expense') {
-         if ($('editTxPaymentMethod').value === 'credit_card') {
+      if (tOld && (tOld.type === 'expense' || tOld.type === 'credit_card_payment')) {
+         if (tOld.type === 'credit_card_payment' || $('editTxPaymentMethod').value === 'credit_card') {
              creditCardId = $('editTxCreditCard').value || null;
          } else {
              creditCardId = null;
@@ -824,7 +838,8 @@ function renderCreditCards() {
             <p class="muted" style="margin:4px 0 0 0; font-size:13px;">${c.issuer ? c.issuer.replace(/</g, "&lt;") : '-'} &bull; ${c.network ? c.network.replace(/</g, "&lt;") : '-'} &bull;&bull;&bull;&bull; ${c.last4 ? c.last4.replace(/</g, "&lt;") : '-'}</p>
           </div>
           <div style="display:flex; gap:8px;">
-            <button class="icon-button" onclick="editCC('${c._id}')" title="Edit">✏️</button>
+            <button class="primary-button" onclick="openPayCC('${c._id}')" style="padding: 4px 8px; font-size: 12px; margin-right: 8px; width: auto;">Pay Bill</button>
+              <button class="icon-button" onclick="editCC('${c._id}')" title="Edit">✏️</button>
             <button class="icon-button" onclick="deleteCC('${c._id}')" title="Delete" style="color:var(--danger)">🗑️</button>
           </div>
         </div>
@@ -969,3 +984,46 @@ $('expenseType').onchange = function() {
         cc.style.display = 'none';
     }
 };
+
+window.openPayCC = id => {
+  const c = state.creditCards.find(x => x._id === id);
+  if (!c) return;
+  $('payCCId').value = id;
+  $('payCCSubtitle').textContent = `Paying ${c.name} (•••• ${c.last4})`;
+  $('payCCAmount').value = '';
+  $('payCCAmount').max = c.currentBalance;
+  $('payCCDialog').showModal();
+};
+
+if ($('payCCForm')) {
+  $('payCCForm').onsubmit = async e => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      const creditCardId = $('payCCId').value;
+      const amount = +$('payCCAmount').value;
+      if (amount <= 0) throw new Error('Invalid amount');
+      
+      const x = await api('transactions', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'credit_card_payment',
+          amount,
+          description: 'Credit Card Payment',
+          creditCardId,
+          date: new Date()
+        })
+      });
+      state.transactions.unshift(x);
+      $('payCCDialog').close();
+      await reloadAnalytics();
+      render();
+      toast('Payment successful');
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+}

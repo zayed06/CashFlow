@@ -258,7 +258,7 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
     // Current Balance
     const balance = txs.reduce((tot, t) => {
       if (['add_money', 'income', 'loan_repayment'].includes(t.type)) return tot + t.amount;
-      if (['deduct_money', 'loan_given', 'subscription'].includes(t.type)) return tot - t.amount;
+      if (['deduct_money', 'loan_given', 'subscription', 'credit_card_payment'].includes(t.type)) return tot - t.amount;
         if (t.type === 'expense' && !t.creditCardId) return tot - t.amount;
       return tot;
     }, 0);
@@ -472,7 +472,7 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
       let created;
 
       if (resource === 'transactions') {
-          const allowedTypes = ['income', 'expense', 'add_money', 'deduct_money'];
+          const allowedTypes = ['income', 'expense', 'add_money', 'deduct_money', 'credit_card_payment'];
           if (!allowedTypes.includes(body.type)) {
             return send(response, 400, { message: 'Invalid transaction type' });
           }
@@ -482,7 +482,17 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
              card.currentBalance += Number(body.amount);
              await card.save();
           }
-          created = await Transaction.create({ ...body, userId: user._id });
+          
+            if (body.type === 'credit_card_payment') {
+               if (!body.creditCardId) return send(response, 400, { message: 'Credit card ID required for payment' });
+               const card = await CreditCard.findOne({ _id: body.creditCardId, userId: user._id });
+               if (!card) return send(response, 404, { message: 'Credit card not found or unauthorized' });
+               if (card.currentBalance <= 0) return send(response, 400, { message: 'Card balance is already zero' });
+               if (Number(body.amount) > card.currentBalance) return send(response, 400, { message: 'Payment amount cannot exceed the current card balance.' });
+               card.currentBalance -= Number(body.amount);
+               await card.save();
+            }
+            created = await Transaction.create({ ...body, userId: user._id });
         } 
       else if (resource === 'categories') {
         created = await Category.create({ ...body, userId: user._id });
@@ -535,37 +545,50 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
            const oldTx = await Transaction.findOne({ _id: id, userId: user._id });
            if (!oldTx) return send(response, 404, { message: 'Record not found' });
            
-           const oldIsCard = (oldTx.type === 'expense' && !!oldTx.creditCardId);
+           const oldIsCardExp = (oldTx.type === 'expense' && !!oldTx.creditCardId);
+           const oldIsCardPay = (oldTx.type === 'credit_card_payment' && !!oldTx.creditCardId);
            const newType = body.type || oldTx.type;
-             const newIsCard = (newType === 'expense' && !!body.creditCardId);
+             const newIsCardExp = (newType === 'expense' && !!body.creditCardId);
+           const newIsCardPay = (newType === 'credit_card_payment' && !!body.creditCardId);
            
-           if (oldIsCard || newIsCard) {
-               const oldCardId = oldIsCard ? oldTx.creditCardId.toString() : null;
-               const newCardId = newIsCard ? body.creditCardId.toString() : null;
-               const oldAmount = oldIsCard ? oldTx.amount : 0;
-               const newAmount = newIsCard ? Number(body.amount) : 0;
+           if (oldIsCardExp || newIsCardExp || oldIsCardPay || newIsCardPay) {
+               const oldCardId = (oldIsCardExp || oldIsCardPay) ? oldTx.creditCardId.toString() : null;
+               const newCardId = (newIsCardExp || newIsCardPay) ? body.creditCardId.toString() : null;
+               const oldAmount = (oldIsCardExp || oldIsCardPay) ? oldTx.amount : 0;
+               const newAmount = (newIsCardExp || newIsCardPay) ? Number(body.amount) : 0;
                
                let oldCard = oldCardId ? await CreditCard.findOne({ _id: oldCardId, userId: user._id }) : null;
                let newCard = (newCardId && newCardId !== oldCardId) ? await CreditCard.findOne({ _id: newCardId, userId: user._id }) : oldCard;
                
-               if (oldIsCard && !oldCard) return send(response, 404, { message: 'Old credit card not found' });
-               if (newIsCard && !newCard) return send(response, 404, { message: 'New credit card not found or unauthorized' });
+               if ((oldIsCardExp || oldIsCardPay) && !oldCard) return send(response, 404, { message: 'Old credit card not found' });
+               if ((newIsCardExp || newIsCardPay) && !newCard) return send(response, 404, { message: 'New credit card not found or unauthorized' });
 
                if (oldCardId === newCardId) {
                    const diff = newAmount - oldAmount;
-                   if (oldCard.currentBalance + diff < 0) return send(response, 400, { message: 'Resulting card balance would be negative' });
-                   oldCard.currentBalance += diff;
+                   let resultingBal = oldCard.currentBalance;
+                     if (newIsCardExp) resultingBal += diff;
+                     if (newIsCardPay) resultingBal -= diff;
+                     if (resultingBal < 0) return send(response, 400, { message: 'Resulting card balance would be negative' });
+                     oldCard.currentBalance = resultingBal;
                    await oldCard.save();
                } else {
                    if (oldCard) {
-                       if (oldCard.currentBalance - oldAmount < 0) return send(response, 400, { message: 'Resulting old card balance would be negative' });
+                       let resultingOldBal = oldCard.currentBalance;
+                       if (oldIsCardExp) resultingOldBal -= oldAmount;
+                       if (oldIsCardPay) resultingOldBal += oldAmount;
+                       if (resultingOldBal < 0) return send(response, 400, { message: 'Resulting old card balance would be negative' });
                    }
                    if (oldCard) {
-                       oldCard.currentBalance -= oldAmount;
+                       if (oldIsCardExp) oldCard.currentBalance -= oldAmount;
+                         if (oldIsCardPay) oldCard.currentBalance += oldAmount;
                        await oldCard.save();
                    }
                    if (newCard) {
-                       newCard.currentBalance += newAmount;
+                       let resultingNewBal = newCard.currentBalance;
+                       if (newIsCardExp) resultingNewBal += newAmount;
+                       if (newIsCardPay) resultingNewBal -= newAmount;
+                       if (resultingNewBal < 0) return send(response, 400, { message: 'Resulting new card balance would be negative' });
+                       newCard.currentBalance = resultingNewBal;
                        await newCard.save();
                    }
                }
@@ -608,11 +631,18 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
         if (resource === 'transactions') {
            const tx = await Transaction.findOne({ _id: id, userId: user._id });
            if (!tx) return send(response, 404, { message: 'Record not found' });
-           if (tx.type === 'expense' && tx.creditCardId) {
+                      if (tx.type === 'expense' && tx.creditCardId) {
                const card = await CreditCard.findOne({ _id: tx.creditCardId, userId: user._id });
                if (card) {
                    if (card.currentBalance - tx.amount < 0) return send(response, 400, { message: 'Deleting this transaction would cause card balance to become negative.' });
                    card.currentBalance -= tx.amount;
+                   await card.save();
+               }
+           }
+           if (tx.type === 'credit_card_payment' && tx.creditCardId) {
+               const card = await CreditCard.findOne({ _id: tx.creditCardId, userId: user._id });
+               if (card) {
+                   card.currentBalance += tx.amount;
                    await card.save();
                }
            }

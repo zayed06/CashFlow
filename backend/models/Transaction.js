@@ -4,7 +4,7 @@ const schema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   type: { 
     type: String, 
-    enum: ['income', 'expense', 'add_money', 'deduct_money', 'loan_given', 'loan_repayment', 'subscription'], 
+    enum: ['income', 'expense', 'add_money', 'deduct_money', 'loan_given', 'loan_repayment', 'subscription', 'credit_card_payment'], 
     required: true 
   },
   amount: { type: Number, required: true, min: 0.01 },
