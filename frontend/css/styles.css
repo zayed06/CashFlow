@@ -40,3 +40,5 @@
 }
 
 @media(max-width:650px){.top-actions{gap:8px}.user-name{display:none}.logout-button{padding:6px 8px}}
+
+#aiChatWindow div p:first-child{margin-top:0;}#aiChatWindow div p:last-child{margin-bottom:0;}#aiChatWindow div ul,#aiChatWindow div ol{padding-left:20px;margin:8px 0;}

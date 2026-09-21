@@ -133,8 +133,8 @@ const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 let spendingChartInstance = null;
 
 function renderAnalytics() {
-  const { monthly, breakdown, categorySpending, budget, upcomingSubscriptions, loans } = state.analytics;
-  
+  const { monthly, breakdown, categorySpending, categoryMonthlySpending, budget, upcomingSubscriptions, loans } = state.analytics;
+
   $('summaryIncome').textContent = money(monthly.income);
   $('summarySpent').textContent = money(monthly.spent);
   $('summarySubs').textContent = money(monthly.subs);
@@ -166,7 +166,39 @@ function renderAnalytics() {
   const catEntries = Object.entries(categorySpending || {}).sort((a,b)=>b[1]-a[1]);
   $('categorySpendingList').innerHTML = catEntries.length ? catEntries.map(([name, amount]) => 
     `<div class="item"><div class="item-main"><strong>${esc(name)}</strong></div><div class="item-right"><span class="amount">${money(amount)}</span></div></div>`
-  ).join('') : empty('No category spending this month.');
+  ).join('') : empty('No category spending for this period.');
+
+  if (catPeriodType === 'year' && categoryMonthlySpending) {
+     $('yearCategoryChart').style.display = 'block';
+     if (yearCategoryChartInstance) yearCategoryChartInstance.destroy();
+     
+     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+     const categoriesSet = new Set();
+     months.forEach(m => Object.keys(categoryMonthlySpending[m] || {}).forEach(c => categoriesSet.add(c)));
+     
+     const colors = ['#3b82f6', '#8b5cf6', '#ef4444', '#10b981', '#f59e0b', '#06b6d4', '#6366f1', '#ec4899', '#84cc16'];
+     const datasets = Array.from(categoriesSet).map((catName, idx) => ({
+        label: catName,
+        data: months.map(m => categoryMonthlySpending[m][catName] || 0),
+        backgroundColor: colors[idx % colors.length]
+     }));
+
+     yearCategoryChartInstance = new Chart($('yearCategoryChart').getContext('2d'), {
+       type: 'bar',
+       data: { labels: months, datasets },
+       options: {
+         responsive: true,
+         maintainAspectRatio: false,
+         scales: {
+           x: { stacked: true },
+           y: { stacked: true, beginAtZero: true }
+         },
+         plugins: { legend: { position: 'right' } }
+       }
+     });
+  } else {
+     $('yearCategoryChart').style.display = 'none';
+  }
 
   $('loanTotal').textContent = money(loans.totalLent);
   $('loanRepaid').textContent = money(loans.totalRepayments);
@@ -306,7 +338,13 @@ $('expenseDate').value=new Date().toISOString().slice(0,10);
 $('subscriptionDate').value=new Date().toISOString().slice(0,10);
 $('today').textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
 
-document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab,.tab-panel').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.tab).classList.add('active')});
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tab,.tab-panel').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  $(b.dataset.tab).classList.add('active');
+  const bc = $('mainBalanceCard');
+  if (bc) bc.style.display = (b.dataset.tab === 'ai') ? 'none' : '';
+});
 
 $('categoryForm').onsubmit=async e=>{
   e.preventDefault();
@@ -531,3 +569,144 @@ window.exportTransactions = async (format) => {
   // Wait, if it's an API route with cookies, opening in new tab will send the cookie.
   window.open(`/api/transactions?${query}`, '_blank');
 };
+
+let catPeriodType = 'month';
+let catPeriodOffset = 0;
+
+function formatLocal(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + d;
+}
+
+function getCatPeriodDates() {
+  const d = new Date();
+  if (catPeriodType === 'month') {
+    const start = new Date(d.getFullYear(), d.getMonth() + catPeriodOffset, 1);
+    const end = new Date(d.getFullYear(), d.getMonth() + catPeriodOffset + 1, 0);
+    return { 
+      start: formatLocal(start), 
+      end: formatLocal(end),
+      label: start.toLocaleString('default', { month: 'short', year: 'numeric' })
+    };
+  } else if (catPeriodType === 'year') {
+    const start = new Date(d.getFullYear() + catPeriodOffset, 0, 1);
+    const end = new Date(d.getFullYear() + catPeriodOffset, 11, 31);
+    return {
+      start: formatLocal(start),
+      end: formatLocal(end),
+      label: start.getFullYear().toString()
+    };
+  } else if (catPeriodType === 'week') {
+    const current = new Date();
+    current.setDate(current.getDate() - current.getDay() + (catPeriodOffset * 7));
+    const start = new Date(current);
+    const end = new Date(current);
+    end.setDate(end.getDate() + 6);
+    
+    const sm = start.toLocaleString('default', { month: 'short', day: 'numeric' });
+    const em = end.toLocaleString('default', { month: 'short', day: 'numeric' });
+    return {
+      start: formatLocal(start),
+      end: formatLocal(end),
+      label: sm + ' - ' + em
+    };
+  }
+}
+
+window.changeCatPeriodType = async () => {
+  catPeriodType = document.getElementById('catPeriodType').value;
+  catPeriodOffset = 0;
+  await updateCatPeriod();
+};
+
+window.navCatPeriod = async (dir) => {
+  catPeriodOffset += dir;
+  await updateCatPeriod();
+};
+
+async function updateCatPeriod() {
+  const { start, end, label } = getCatPeriodDates();
+  document.getElementById('catPeriodLabel').textContent = label;
+  state.analytics = await api('analytics?catStart=' + start + '&catEnd=' + end + '&catPeriodType=' + catPeriodType);
+  renderAnalytics();
+}
+
+// Initialize the label on load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('catPeriodLabel').textContent = getCatPeriodDates().label;
+  });
+} else {
+  document.getElementById('catPeriodLabel').textContent = getCatPeriodDates().label;
+}
+
+let yearCategoryChartInstance = null;
+
+window.sendAiMessage = async () => {
+  const input = document.getElementById('aiInput');
+  const text = input.value.trim();
+  if (!text) return;
+  const chatWin = document.getElementById('aiChatWindow');
+  const userMsg = document.createElement('div');
+  userMsg.style = 'align-self: flex-end; background: var(--primary); color: white; padding: 10px 14px; border-radius: 14px; border-bottom-right-radius: 4px; max-width: 80%;';
+  userMsg.textContent = text;
+  chatWin.appendChild(userMsg);
+  input.value = '';
+  const loadMsg = document.createElement('div');
+  loadMsg.style = 'align-self: flex-start; background: var(--bg); padding: 10px 14px; border-radius: 14px; border-bottom-left-radius: 4px; max-width: 80%; border: 1px solid var(--border); color: var(--muted);';
+  loadMsg.textContent = 'Thinking...';
+  chatWin.appendChild(loadMsg);
+  chatWin.scrollTop = chatWin.scrollHeight;
+  try {
+    document.getElementById('aiSendBtn').disabled = true;
+    const res = await api('ai/chat', { method: 'POST', body: JSON.stringify({ question: text }) });
+    loadMsg.style.color = 'var(--text)';
+    
+    let cleanAnswer = res.answer || '';
+    cleanAnswer = cleanAnswer.replace(/\$\$(.*?)\$\$/gs, '\n\n$1\n\n');
+    cleanAnswer = cleanAnswer.replace(/\\\[(.*?)\\\]/gs, '\n\n$1\n\n');
+    cleanAnswer = cleanAnswer.replace(/\\\((.*?)\\\)/g, '$1');
+    cleanAnswer = cleanAnswer.replace(/\$(.*?)\$/g, '$1');
+    
+    cleanAnswer = cleanAnswer.replace(/\\mathbf\{([^}]*)\}/g, '**$1**');
+    cleanAnswer = cleanAnswer.replace(/\\textbf\{([^}]*)\}/g, '**$1**');
+    cleanAnswer = cleanAnswer.replace(/\\textit\{([^}]*)\}/g, '*$1*');
+    cleanAnswer = cleanAnswer.replace(/\\text\{([^}]*)\}/g, '$1');
+    cleanAnswer = cleanAnswer.replace(/\\mathrm\{([^}]*)\}/g, '$1');
+    cleanAnswer = cleanAnswer.replace(/\\math[a-zA-Z]+\{([^}]*)\}/g, '$1');
+    
+    cleanAnswer = cleanAnswer.replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '$1/$2');
+    cleanAnswer = cleanAnswer.replace(/\\times/g, 'x');
+    cleanAnswer = cleanAnswer.replace(/\\div/g, '/');
+    cleanAnswer = cleanAnswer.replace(/\\cdot/g, '*');
+    cleanAnswer = cleanAnswer.replace(/\\approx/g, '≈');
+    cleanAnswer = cleanAnswer.replace(/\\neq/g, '≠');
+    cleanAnswer = cleanAnswer.replace(/\\leq/g, '≤');
+    cleanAnswer = cleanAnswer.replace(/\\geq/g, '≥');
+    cleanAnswer = cleanAnswer.replace(/\\_/g, '_');
+    
+    if (window.DOMPurify && window.marked) {
+       const parsedHtml = typeof marked.parse === 'function' ? marked.parse(cleanAnswer) : marked(cleanAnswer);
+       loadMsg.innerHTML = DOMPurify.sanitize(parsedHtml);
+    } else {
+       loadMsg.innerHTML = esc(cleanAnswer).replace(/\n/g, '<br>');
+    }
+  } catch (err) {
+    loadMsg.style.color = 'var(--danger)';
+    loadMsg.textContent = err.message || 'Failed to reach AI Assistant.';
+  } finally {
+    document.getElementById('aiSendBtn').disabled = false;
+    chatWin.scrollTop = chatWin.scrollHeight;
+  }
+};
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    const aiInput = document.getElementById('aiInput');
+    if (aiInput) aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendAiMessage(); });
+  });
+} else {
+  const aiInput = document.getElementById('aiInput');
+  if (aiInput) aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendAiMessage(); });
+}

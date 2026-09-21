@@ -56,9 +56,15 @@ async function processDueSubscriptions(userId) {
     if (dueSubs.length === 0) break;
     
     for (const sub of dueSubs) {
+      let catId = sub.categoryId;
+      let subCat = await Category.findOne({ userId, name: 'Subscriptions' });
+      if (!subCat) subCat = await Category.create({ userId, name: 'Subscriptions' });
+      catId = subCat._id; // Force Subscriptions category
+      sub.categoryId = catId;
+
       await Transaction.create({
         userId, type: 'subscription', amount: sub.amount, description: sub.name, relatedId: sub._id,
-        categoryId: sub.categoryId, date: new Date(sub.date + 'T12:00:00')
+        categoryId: catId, date: new Date(sub.date + 'T12:00:00')
       });
       
       const msg = `${sub.name} payment of ₹${sub.amount} was processed.`;
@@ -93,6 +99,139 @@ export async function handleApi(request, response) {
 
   const resource = parts[1];
   const id = parts[2];
+
+  if (resource === 'ai' && id === 'chat') {
+    if (request.method !== 'POST') return send(response, 405, { message: 'Method not allowed' });
+    const body = await readJson(request);
+    if (!body.question) return send(response, 400, { message: 'Question required' });
+
+    try {
+      const txs = await Transaction.find({ userId: user._id });
+      const cats = await Category.find({ userId: user._id });
+      const subs = await Subscription.find({ userId: user._id });
+      const loans = await Loan.find({ userId: user._id });
+      const budgets = await Budget.find({ userId: user._id });
+
+      let balance = 0;
+      let totalInflows = 0;
+      let totalOutflows = 0;
+      txs.forEach(t => {
+         if (['income', 'add_money', 'loan_repayment'].includes(t.type)) { balance += t.amount; totalInflows += t.amount; }
+         if (['expense', 'deduct_money', 'loan_given', 'subscription'].includes(t.type)) { balance -= t.amount; totalOutflows += t.amount; }
+      });
+
+      const simplifiedTxs = txs.map(t => ({ date: t.date, type: t.type, amount: t.amount, desc: t.description, cat: t.categoryId ? cats.find(c => c._id.equals(t.categoryId))?.name : null }));
+      const simplifiedSubs = subs.map(s => ({ name: s.name, amt: s.amount, freq: s.frequency, next: s.date, active: s.active, processed: s.processed }));
+      const simplifiedLoans = loans.map(l => ({ name: l.personName, amt: l.amount, repaid: l.repaidAmount }));
+      const simplifiedBudgets = budgets.map(b => ({ month: b.month, amount: b.amount }));
+
+      const catMap = {};
+      cats.forEach(c => catMap[c._id.toString()] = c.name);
+
+      function calculateCatSpending(startStr, endStr) {
+         const start = new Date(startStr + 'T00:00:00.000Z');
+         const end = new Date(endStr + 'T23:59:59.999Z');
+         let spending = {};
+         txs.forEach(t => {
+            const d = new Date(t.date);
+            if (d >= start && d <= end && ['expense', 'subscription'].includes(t.type) && t.categoryId) {
+               const cName = catMap[t.categoryId.toString()] || 'Unknown';
+               spending[cName] = (spending[cName] || 0) + t.amount;
+            }
+         });
+         return spending;
+      }
+
+      function formatLocal(date) {
+         return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+      }
+
+      const d = new Date();
+      // This Month
+      const monthStart = new Date(d.getFullYear(), d.getMonth(), 1);
+      const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      const catSpendingThisMonth = calculateCatSpending(formatLocal(monthStart), formatLocal(monthEnd));
+
+      // This Year
+      const yearStart = new Date(d.getFullYear(), 0, 1);
+      const yearEnd = new Date(d.getFullYear(), 11, 31);
+      const catSpendingThisYear = calculateCatSpending(formatLocal(yearStart), formatLocal(yearEnd));
+      
+      // Last Month
+      const lastMonthStart = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      const lastMonthEnd = new Date(d.getFullYear(), d.getMonth(), 0);
+      const catSpendingLastMonth = calculateCatSpending(formatLocal(lastMonthStart), formatLocal(lastMonthEnd));
+
+      // This Week
+      const current = new Date();
+      current.setDate(current.getDate() - current.getDay());
+      const weekStart = new Date(current);
+      const weekEnd = new Date(current);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const catSpendingThisWeek = calculateCatSpending(formatLocal(weekStart), formatLocal(weekEnd));
+
+      // Monthly breakdown for This Year (Jan-Dec)
+      let catSpendingByMonthThisYear = {};
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      months.forEach(m => catSpendingByMonthThisYear[m] = {});
+      
+      const yStart = new Date(formatLocal(yearStart) + 'T00:00:00.000Z');
+      const yEnd = new Date(formatLocal(yearEnd) + 'T23:59:59.999Z');
+
+      txs.forEach(t => {
+         const txDate = new Date(t.date);
+         if (txDate >= yStart && txDate <= yEnd && ['expense', 'subscription'].includes(t.type) && t.categoryId) {
+            const cName = catMap[t.categoryId.toString()] || 'Unknown';
+            const m = txDate.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+            if (catSpendingByMonthThisYear[m]) {
+               catSpendingByMonthThisYear[m][cName] = (catSpendingByMonthThisYear[m][cName] || 0) + t.amount;
+            }
+         }
+      });
+
+      const systemInstruction = `You are CashFlow AI, a read-only financial assistant. Answer the user's questions clearly based ONLY on this JSON data representing their finances. Use ₹ for amounts. Distinguish past (processed) from future (scheduled). Be concise and do not invent transactions.
+IMPORTANT FORMATTING RULES:
+- Do NOT use LaTeX.
+- Do NOT use $$...$$.
+- Do NOT use \\mathbf{}, \\text{}, or other LaTeX commands.
+- Write calculations as normal plain text (e.g. Current Balance = ₹11,200 - ₹3,120 = ₹8,080).
+- Continue using normal Markdown for headings, bold text, and bullet lists.
+
+Data:
+Current Balance: ₹${balance}
+Total Inflows: ₹${totalInflows}
+Total Outflows: ₹${totalOutflows}
+Budgets: ${JSON.stringify(simplifiedBudgets)}
+Loans: ${JSON.stringify(simplifiedLoans)}
+Subscriptions: ${JSON.stringify(simplifiedSubs)}
+
+Category Spending Totals (Already Calculated):
+This Week (${formatLocal(weekStart)} to ${formatLocal(weekEnd)}): ${JSON.stringify(catSpendingThisWeek)}
+This Month (${formatLocal(monthStart)} to ${formatLocal(monthEnd)}): ${JSON.stringify(catSpendingThisMonth)}
+Last Month (${formatLocal(lastMonthStart)} to ${formatLocal(lastMonthEnd)}): ${JSON.stringify(catSpendingLastMonth)}
+This Year (${formatLocal(yearStart)} to ${formatLocal(yearEnd)}): ${JSON.stringify(catSpendingThisYear)}
+This Year (2026) broken down by month: ${JSON.stringify(catSpendingByMonthThisYear)}
+
+Transactions: ${JSON.stringify(simplifiedTxs)}`;
+
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const result = await ai.models.generateContent({
+         model: 'gemini-3.6-flash',
+         contents: body.question,
+         config: { systemInstruction }
+      });
+      return send(response, 200, { answer: result.text });
+    } catch (err) {
+      console.error('AI Error:', err);
+      const apiKey = process.env.GEMINI_API_KEY || 'HIDDEN_KEY';
+      const safeErrorMsg = (err.message || String(err)).replace(new RegExp(apiKey, 'g'), '[REDACTED_API_KEY]');
+      const safeStack = (err.stack || '').replace(new RegExp(apiKey, 'g'), '[REDACTED_API_KEY]');
+      return send(response, 500, { 
+         message: `AI failed to process the request.\n\nError: ${safeErrorMsg}\n\nStack:\n${safeStack}`
+      });
+    }
+  }
 
   if (parts[1] === 'analytics') {
     if (request.method !== 'GET') return send(response, 405, { message: 'Method not allowed' });
@@ -129,13 +268,24 @@ export async function handleApi(request, response) {
     const catMap = {};
     categories.forEach(c => catMap[c._id.toString()] = c.name);
 
+    const catStart = url.searchParams.get('catStart');
+    const catEnd = url.searchParams.get('catEnd');
+    const catPeriodType = url.searchParams.get('catPeriodType');
+    const cStart = catStart ? new Date(catStart + 'T00:00:00.000Z') : new Date(Date.UTC(currentYear, currentMonth, 1));
+    const cEnd = catEnd ? new Date(catEnd + 'T23:59:59.999Z') : new Date(Date.UTC(currentYear, currentMonth + 1, 0, 23, 59, 59, 999));
+
     let categorySpending = {};
+    let categoryMonthlySpending = {};
+    if (catPeriodType === 'year') {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      months.forEach(m => categoryMonthlySpending[m] = {});
+    }
 
     txs.forEach(t => {
       const d = new Date(t.date);
       const isCurrentMonth = d.getMonth() === currentMonth && d.getFullYear() === currentYear;
       
-      // Spending breakdown (all time or current month? let's do all-time for breakdown to show total distribution)
+      // Spending breakdown (all time)
       if (t.type === 'expense') totalExpenses += t.amount;
       if (t.type === 'subscription') totalSubs += t.amount;
       if (t.type === 'deduct_money') totalDeductions += t.amount;
@@ -147,12 +297,19 @@ export async function handleApi(request, response) {
         if (t.type === 'subscription') { monthlySpent += t.amount; monthlySubs += t.amount; }
         if (t.type === 'loan_repayment') monthlyLoanRepayments += t.amount;
         if (t.type === 'loan_given') { monthlySpent += t.amount; monthlyLent += t.amount; }
-        
-        // Category spending (only actual spending counts)
-        if (['expense', 'subscription'].includes(t.type) && t.categoryId) {
-           const cName = catMap[t.categoryId.toString()] || 'Unknown';
-           categorySpending[cName] = (categorySpending[cName] || 0) + t.amount;
-        }
+      }
+
+      // Category spending (dynamic period)
+      if (d >= cStart && d <= cEnd && ['expense', 'subscription'].includes(t.type) && t.categoryId) {
+         const cName = catMap[t.categoryId.toString()] || 'Unknown';
+         categorySpending[cName] = (categorySpending[cName] || 0) + t.amount;
+         
+         if (catPeriodType === 'year') {
+            const m = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+            if (categoryMonthlySpending[m]) {
+               categoryMonthlySpending[m][cName] = (categoryMonthlySpending[m][cName] || 0) + t.amount;
+            }
+         }
       }
     });
 
@@ -181,6 +338,7 @@ export async function handleApi(request, response) {
       monthly: { income: monthlyIncome, spent: monthlySpent, subs: monthlySubs, loanRepayments: monthlyLoanRepayments, lent: monthlyLent },
       breakdown: { expenses: totalExpenses, subscriptions: totalSubs, deductions: totalDeductions },
       categorySpending,
+      categoryMonthlySpending,
       budget: budgetDoc ? budgetDoc.amount : null,
       upcomingSubscriptions,
       loans: { totalLent, totalRepayments, outstanding: outstandingLoans }
@@ -322,7 +480,10 @@ export async function handleApi(request, response) {
         });
       }
       else if (resource === 'subscriptions') {
-        created = await Subscription.create({ ...body, userId: user._id });
+        let subCat = await Category.findOne({ userId: user._id, name: 'Subscriptions' });
+        if (!subCat) subCat = await Category.create({ userId: user._id, name: 'Subscriptions' });
+
+        created = await Subscription.create({ ...body, userId: user._id, categoryId: subCat._id });
         await processDueSubscriptions(user._id);
         created = await Subscription.findById(created._id);
       }
