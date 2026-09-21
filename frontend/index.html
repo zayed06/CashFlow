@@ -20,6 +20,7 @@
         <button class="sidebar-tab tab" data-tab="transactions">▣ <span>Transactions</span></button>
         <button class="sidebar-tab tab" data-tab="subscriptions">↻ <span>Subscriptions</span></button>
         <button class="sidebar-tab tab" data-tab="loans">♧ <span>Lent</span></button>
+        <button class="sidebar-tab tab" data-tab="budget">💰 <span>Budget & Categories</span></button>
       </nav>
     </aside>
 
@@ -30,7 +31,27 @@
             <div class="brand-icon">$</div>
             <div><h1>CashFlow</h1></div>
           </div>
-          <div class="top-actions"><span id="today"></span><span id="userName" class="user-name"></span><button id="logoutButton" class="logout-button">Log out</button><button id="themeButton" class="icon-button" title="Toggle theme">◐</button></div>
+          <div class="top-actions">
+            <span id="today"></span>
+            <span id="userName" class="user-name"></span>
+            <div style="position: relative;">
+              <button id="notificationButton" class="icon-button" style="position: relative; background: transparent; font-size: 18px;" title="Notifications">🔔
+                <span id="notificationBadge" style="position: absolute; top: 0px; right: 0px; background: var(--danger); color: white; border-radius: 50%; font-size: 10px; width: 16px; height: 16px; display: none; place-items: center; font-weight: bold;">0</span>
+              </button>
+              <div id="notificationPanel" class="card" style="display: none; position: absolute; top: 100%; right: 0; width: 320px; max-height: 400px; overflow-y: auto; padding: 10px; z-index: 100; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border);">
+                  <strong style="font-size: 14px;">Notifications</strong>
+                  <div>
+                    <button class="delete" style="color: var(--primary); font-size: 12px; cursor: pointer; margin-right: 8px;" onclick="markAllNotificationsRead()">Mark all as read</button>
+                    <button class="delete" style="color: var(--danger); font-size: 12px; cursor: pointer;" onclick="clearAllNotifications()">Clear all</button>
+                  </div>
+                </div>
+                <div id="notificationList"></div>
+              </div>
+            </div>
+            <button id="logoutButton" class="logout-button">Log out</button>
+            <button id="themeButton" class="icon-button" title="Toggle theme">◐</button>
+          </div>
         </div>
       </header>
 
@@ -61,6 +82,20 @@
         </div>
       </div>
       
+      <div class="card" id="budgetCard" style="display: none;">
+        <div class="card-title">Monthly Budget</div>
+        <div style="margin-top: 1rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 5px;">
+             <span><strong id="budgetUsedAmount">₹0</strong> spent of <span id="budgetTotalAmount">₹0</span></span>
+             <span id="budgetPercentage">0%</span>
+          </div>
+          <div style="width: 100%; height: 10px; background: var(--border); border-radius: 5px; overflow: hidden;">
+             <div id="budgetProgressBar" style="height: 100%; background: var(--primary); width: 0%; transition: 0.3s;"></div>
+          </div>
+          <p id="budgetRemainingText" class="muted" style="margin-top: 8px; font-size: 0.8rem;"></p>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-title">Loan Information</div>
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem;">
@@ -68,6 +103,11 @@
           <div><p class="muted" style="font-size:0.8rem">Repayments</p><strong id="loanRepaid">₹0</strong></div>
           <div><p class="muted" style="font-size:0.8rem">Outstanding</p><strong id="loanOutstanding">₹0</strong></div>
         </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Category Spending</div>
+        <div id="categorySpendingList"></div>
       </div>
 
       <div class="card">
@@ -88,11 +128,65 @@
           </select>
           <input id="expenseDescription" placeholder="Description" required>
           <input id="expenseAmount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
+          <select id="expenseCategory" required style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+             <option value="">Select Category</option>
+          </select>
           <input id="expenseDate" type="date" required>
           <button id="addTransactionBtn" class="primary-button" type="submit">Add Transaction</button>
         </form>
       </div>
-      <div class="section-heading">Recent Transactions</div>
+      <div class="card" style="margin-top: 1.5rem;">
+        <div class="card-title">Search & Filter</div>
+        <form id="filterForm" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 15px;">
+          <input id="filterSearch" placeholder="Search transactions... 🔍" style="grid-column: 1 / -1;">
+          <select id="filterCategory" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+            <option value="">All Categories</option>
+          </select>
+          <select id="filterType" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+            <option value="">All Types</option>
+            <option value="expense">Expense</option>
+            <option value="income">Income</option>
+            <option value="add_money">Add Money</option>
+            <option value="deduct_money">Deduct Money</option>
+            <option value="subscription">Subscription</option>
+            <option value="loan_given">Loan Given</option>
+            <option value="loan_repayment">Loan Repayment</option>
+          </select>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label for="filterDateFrom" style="font-size: 11px; color: var(--text); opacity: 0.7;">From Date</label>
+            <input id="filterDateFrom" type="date" title="From Date" style="flex: 1; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label for="filterDateTo" style="font-size: 11px; color: var(--text); opacity: 0.7;">To Date</label>
+            <input id="filterDateTo" type="date" title="To Date" style="flex: 1; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+          </div>
+          <select id="filterSort" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+            <option value="newest">Sort: Newest first</option>
+            <option value="oldest">Sort: Oldest first</option>
+            <option value="amount_desc">Sort: Highest amount</option>
+            <option value="amount_asc">Sort: Lowest amount</option>
+          </select>
+          <div style="display: flex; gap: 10px; grid-column: 1 / -1; justify-content: space-between; flex-wrap: wrap;">
+             <div>
+               <button type="submit" class="primary-button" style="width: auto; padding: 0.6rem 1rem;">Apply</button>
+               <button type="button" class="delete" style="width: auto; padding: 0.6rem 1rem; border: 1px solid var(--border);" onclick="resetFilters()">Reset</button>
+             </div>
+             <div>
+               <button type="button" class="primary-button" style="width: auto; padding: 0.6rem 1rem; background: #10b981;" onclick="exportTransactions('csv')">Export CSV</button>
+               <button type="button" class="primary-button" style="width: auto; padding: 0.6rem 1rem; background: #6366f1;" onclick="exportTransactions('json')">Export JSON</button>
+             </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="section-heading" style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Transactions</span>
+        <div id="paginationControls" style="font-size: 13px; display: flex; align-items: center; gap: 10px;">
+           <button class="delete" style="padding: 4px 8px; border: 1px solid var(--border);" onclick="prevPage()">Prev</button>
+           <span id="pageInfo">Page 1</span>
+           <button class="delete" style="padding: 4px 8px; border: 1px solid var(--border);" onclick="nextPage()">Next</button>
+        </div>
+      </div>
       <div id="transactionList"></div>
     </section>
 
@@ -101,8 +195,14 @@
         <form id="subscriptionForm" class="form-grid">
           <input id="subscriptionName" placeholder="Subscription name" required>
           <input id="subscriptionAmount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
+          <select id="subscriptionFrequency" required style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+             <option value="one-time">One-time</option>
+             <option value="weekly">Weekly</option>
+             <option value="monthly">Monthly</option>
+             <option value="yearly">Yearly</option>
+          </select>
           <input id="subscriptionDate" type="date" required>
-          <button class="primary-button" type="submit">Add Subscription</button>
+          <button class="primary-button" type="submit" style="grid-column: 1 / -1;">Add Subscription</button>
         </form>
       </div>
       <div class="section-heading">Subscriptions</div><div id="subscriptionList"></div>
@@ -118,11 +218,30 @@
       </div>
       <div class="section-heading">Money lent</div><div id="loanList"></div>
     </section>
+
+    <section id="budget" class="tab-panel">
+      <div class="card"><div class="card-title">Set Monthly Budget</div>
+        <form id="budgetForm" class="form-grid">
+          <input id="budgetAmount" type="number" min="0.01" step="0.01" placeholder="Monthly Budget (₹)" required>
+          <button class="primary-button" type="submit">Save Budget</button>
+        </form>
+      </div>
+
+      <div class="card" style="margin-top: 1rem;"><div class="card-title">Custom Categories</div>
+        <form id="categoryForm" class="form-grid" style="margin-bottom: 1rem;">
+          <input id="categoryName" placeholder="New category name" required>
+          <button class="secondary-button" type="submit">Add Category</button>
+        </form>
+        <div id="categoryList"></div>
+      </div>
+    </section>
   </main>
   </div>
   </div>
 
   <dialog id="moneyDialog"><div class="dialog"><h2 id="moneyTitle">Add Money</h2><p class="muted">Enter the amount you want to record.</p><form id="moneyForm"><input id="moneyAmount" type="number" min="0.01" step="0.01" placeholder="₹ Amount" required><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelMoney">Cancel</button><button class="primary-button" id="saveMoney">Save</button></div></form></div></dialog>
+
+  <dialog id="editTxDialog"><div class="dialog"><h2>Edit Transaction</h2><form id="editTxForm"><input type="hidden" id="editTxId"><input id="editTxDescription" placeholder="Description" required style="margin-top:10px;"><input id="editTxAmount" type="number" min="0.01" step="0.01" placeholder="Amount" required style="margin-top:10px;"><select id="editTxCategory" style="margin-top:10px; width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--border);"><option value="">Select Category</option></select><div class="dialog-actions" style="margin-top:18px;"><button type="button" class="secondary-button" onclick="$('editTxDialog').close()">Cancel</button><button class="primary-button" type="submit">Save</button></div></form></div></dialog>
 
   <div id="toast" class="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

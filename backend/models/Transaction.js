@@ -10,7 +10,8 @@ const schema = new mongoose.Schema({
   amount: { type: Number, required: true, min: 0.01 },
   description: { type: String, trim: true, maxlength: 200 },
   date: { type: Date, default: Date.now },
-  relatedId: { type: mongoose.Schema.Types.ObjectId }
+  relatedId: { type: mongoose.Schema.Types.ObjectId },
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' }
 }, { timestamps: true });
 
 export default mongoose.model('Transaction', schema);
