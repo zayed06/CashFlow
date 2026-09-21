@@ -889,8 +889,16 @@ function renderCreditCards() {
           </div>
           <div>
             <strong style="color:var(--muted); font-size:12px; letter-spacing:0.5px;">DUE DATE</strong><br>
-            <span style="font-size:14px;">${dueDate}</span>
-          </div>
+              <span style="font-size:14px;">${dueDate}</span>
+            </div>
+            <div>
+              <strong style="color:var(--muted); font-size:12px; letter-spacing:0.5px;">STATEMENT STATUS</strong><br>
+              <span style="font-size:14px;">${c.statementStatus || '-'}</span>
+            </div>
+            <div>
+              <strong style="color:var(--muted); font-size:12px; letter-spacing:0.5px;">PAYMENT STATUS</strong><br>
+              <span style="font-size:14px; ${(c.paymentStatus||'').includes('Overdue') ? 'color:var(--danger);font-weight:600;' : ''}">${c.paymentStatus || '-'}</span>
+            </div>
         </div>
         
       </div>

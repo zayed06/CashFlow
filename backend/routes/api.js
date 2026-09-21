@@ -9,6 +9,7 @@ import Notification from '../models/Notification.js';
 import CreditCard from '../models/CreditCard.js';
 import { getCurrentUser } from '../auth.js';
 import { handleAuth, send } from './auth.js';
+import { enrichCreditCard } from '../utils/creditCardUtils.js';
 
 const models = { subscriptions: Subscription, loans: Loan, transactions: Transaction, categories: Category, budgets: Budget, notifications: Notification, 'credit-cards': CreditCard };
 
@@ -31,6 +32,69 @@ function getNextDate(dateStr, frequency) {
 }
 
 const processingLocks = new Set();
+
+
+const ccLocks = new Set();
+async function processCreditCardAlerts(user) {
+    if (ccLocks.has(user._id.toString())) return;
+    ccLocks.add(user._id.toString());
+    try {
+        const cards = await CreditCard.find({ userId: user._id });
+        for (const cardRaw of cards) {
+            const card = enrichCreditCard(cardRaw);
+            if (card.statementStatus === 'No Statement') continue;
+
+            const cur = user.currency || 'INR';
+            
+            if (card.daysUntilStatement >= 0 && card.daysUntilStatement <= 3) {
+                const msg = `${card.name} statement is due in ${card.daysUntilStatement} days.`;
+                const ref = `${card.nextStatementDate.toISOString().slice(0,10)}`;
+                const exists = await Notification.exists({ userId: user._id, relatedId: card._id, alertType: 'upcoming_statement', referenceDate: ref });
+                if (!exists) {
+                    await Notification.create({ userId: user._id, message: msg, type: 'info', relatedId: card._id, alertType: 'upcoming_statement', referenceDate: ref });
+                }
+            }
+
+            if (card.paymentStatus !== 'Paid') {
+                const dueRef = `${card.nextDueDate.toISOString().slice(0,10)}`;
+                if (card.daysUntilDue > 0 && card.daysUntilDue <= 3) {
+                    const msg = `${card.name} payment of ${cur} ${card.statementBalance} is due in ${card.daysUntilDue} days.`;
+                    const exists = await Notification.exists({ userId: user._id, relatedId: card._id, alertType: 'payment_due', referenceDate: dueRef });
+                    if (!exists) await Notification.create({ userId: user._id, message: msg, type: 'warning', relatedId: card._id, alertType: 'payment_due', referenceDate: dueRef });
+                }
+                
+                if (card.daysUntilDue === 0) {
+                    const msg = `${card.name} payment of ${cur} ${card.statementBalance} is due today.`;
+                    const exists = await Notification.exists({ userId: user._id, relatedId: card._id, alertType: 'due_today', referenceDate: dueRef });
+                    if (!exists) await Notification.create({ userId: user._id, message: msg, type: 'warning', relatedId: card._id, alertType: 'due_today', referenceDate: dueRef });
+                }
+                
+                if (card.daysUntilDue < 0) {
+                    const msg = `${card.name} payment is overdue.`;
+                    const exists = await Notification.exists({ userId: user._id, relatedId: card._id, alertType: 'overdue', referenceDate: dueRef });
+                    if (!exists) await Notification.create({ userId: user._id, message: msg, type: 'warning', relatedId: card._id, alertType: 'overdue', referenceDate: dueRef });
+                }
+            }
+
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const lastStmt = new Date(card.lastStatementDate);
+            lastStmt.setHours(0,0,0,0);
+            const daysSinceStatement = Math.floor((today - lastStmt) / (1000 * 60 * 60 * 24));
+            
+            if (daysSinceStatement >= 0 && daysSinceStatement <= 3) {
+                const msg = `${card.name} statement generated for ${cur} ${card.statementBalance}.`;
+                const ref = `${card.lastStatementDate.toISOString().slice(0,10)}`;
+                const exists = await Notification.exists({ userId: user._id, relatedId: card._id, alertType: 'statement_generated', referenceDate: ref });
+                if (!exists) await Notification.create({ userId: user._id, message: msg, type: 'info', relatedId: card._id, alertType: 'statement_generated', referenceDate: ref });
+            }
+        }
+    } catch(e) {
+        console.error('Error CC alerts:', e);
+    } finally {
+        ccLocks.delete(user._id.toString());
+    }
+}
 
 async function processDueSubscriptions(userId) {
   if (processingLocks.has(userId.toString())) return;
@@ -97,6 +161,7 @@ export async function handleApi(request, response) {
   if (!user) return send(response, 401, { message: 'Please log in to continue.' });
 
   await processDueSubscriptions(user._id);
+  await processCreditCardAlerts(user);
 
     if (parts[1] === 'user' && parts[2] === 'settings' && request.method === 'PUT') {
       const body = await readJson(request);
@@ -457,7 +522,10 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
         return send(response, 200, { data, total, page, limit });
       }
 
-      const data = await model.find({ userId: user._id }).sort({ createdAt: -1 });
+      let data = await model.find({ userId: user._id }).sort({ createdAt: -1 });
+      if (resource === 'credit-cards') {
+        data = data.map(c => enrichCreditCard(c));
+      }
       return send(response, 200, data);
     }
 
@@ -532,7 +600,8 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
         }
         else if (resource === 'credit-cards') {
           created = await CreditCard.create({ ...body, userId: user._id });
-        }
+            created = enrichCreditCard(created);
+          }
 
         return send(response, 201, created);
     }
@@ -619,6 +688,9 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
       }
 
       const updated = await model.findOneAndUpdate({ _id: id, userId: user._id }, body, { new: true, runValidators: true });
+      if (updated && resource === 'credit-cards') {
+        return send(response, 200, enrichCreditCard(updated));
+      }
       return updated ? send(response, 200, updated) : send(response, 404, { message: 'Record not found' });
     }
 
