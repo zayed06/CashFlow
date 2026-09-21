@@ -11,7 +11,8 @@ const schema = new mongoose.Schema({
   description: { type: String, trim: true, maxlength: 200 },
   date: { type: Date, default: Date.now },
   relatedId: { type: mongoose.Schema.Types.ObjectId },
-  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' }
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+  creditCardId: { type: mongoose.Schema.Types.ObjectId, ref: 'CreditCard', default: null }
 }, { timestamps: true });
 
 export default mongoose.model('Transaction', schema);

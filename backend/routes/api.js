@@ -258,7 +258,8 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
     // Current Balance
     const balance = txs.reduce((tot, t) => {
       if (['add_money', 'income', 'loan_repayment'].includes(t.type)) return tot + t.amount;
-      if (['deduct_money', 'expense', 'loan_given', 'subscription'].includes(t.type)) return tot - t.amount;
+      if (['deduct_money', 'loan_given', 'subscription'].includes(t.type)) return tot - t.amount;
+        if (t.type === 'expense' && !t.creditCardId) return tot - t.amount;
       return tot;
     }, 0);
 
@@ -471,12 +472,18 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
       let created;
 
       if (resource === 'transactions') {
-        const allowedTypes = ['income', 'expense', 'add_money', 'deduct_money'];
-        if (!allowedTypes.includes(body.type)) {
-          return send(response, 400, { message: 'Invalid transaction type' });
-        }
-        created = await Transaction.create({ ...body, userId: user._id });
-      } 
+          const allowedTypes = ['income', 'expense', 'add_money', 'deduct_money'];
+          if (!allowedTypes.includes(body.type)) {
+            return send(response, 400, { message: 'Invalid transaction type' });
+          }
+          if (body.type === 'expense' && body.creditCardId) {
+             const card = await CreditCard.findOne({ _id: body.creditCardId, userId: user._id });
+             if (!card) return send(response, 404, { message: 'Credit card not found or unauthorized' });
+             card.currentBalance += Number(body.amount);
+             await card.save();
+          }
+          created = await Transaction.create({ ...body, userId: user._id });
+        } 
       else if (resource === 'categories') {
         created = await Category.create({ ...body, userId: user._id });
       }
@@ -521,8 +528,49 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
     }
 
     if (request.method === 'PUT' && id) {
-      const body = await readJson(request);
-      delete body.userId; delete body._id; delete body.createdAt; delete body.updatedAt;
+        const body = await readJson(request);
+        delete body.userId; delete body._id; delete body.createdAt; delete body.updatedAt;
+        
+        if (resource === 'transactions') {
+           const oldTx = await Transaction.findOne({ _id: id, userId: user._id });
+           if (!oldTx) return send(response, 404, { message: 'Record not found' });
+           
+           const oldIsCard = (oldTx.type === 'expense' && !!oldTx.creditCardId);
+           const newType = body.type || oldTx.type;
+             const newIsCard = (newType === 'expense' && !!body.creditCardId);
+           
+           if (oldIsCard || newIsCard) {
+               const oldCardId = oldIsCard ? oldTx.creditCardId.toString() : null;
+               const newCardId = newIsCard ? body.creditCardId.toString() : null;
+               const oldAmount = oldIsCard ? oldTx.amount : 0;
+               const newAmount = newIsCard ? Number(body.amount) : 0;
+               
+               let oldCard = oldCardId ? await CreditCard.findOne({ _id: oldCardId, userId: user._id }) : null;
+               let newCard = (newCardId && newCardId !== oldCardId) ? await CreditCard.findOne({ _id: newCardId, userId: user._id }) : oldCard;
+               
+               if (oldIsCard && !oldCard) return send(response, 404, { message: 'Old credit card not found' });
+               if (newIsCard && !newCard) return send(response, 404, { message: 'New credit card not found or unauthorized' });
+
+               if (oldCardId === newCardId) {
+                   const diff = newAmount - oldAmount;
+                   if (oldCard.currentBalance + diff < 0) return send(response, 400, { message: 'Resulting card balance would be negative' });
+                   oldCard.currentBalance += diff;
+                   await oldCard.save();
+               } else {
+                   if (oldCard) {
+                       if (oldCard.currentBalance - oldAmount < 0) return send(response, 400, { message: 'Resulting old card balance would be negative' });
+                   }
+                   if (oldCard) {
+                       oldCard.currentBalance -= oldAmount;
+                       await oldCard.save();
+                   }
+                   if (newCard) {
+                       newCard.currentBalance += newAmount;
+                       await newCard.save();
+                   }
+               }
+           }
+        }
 
       if (resource === 'loans' && body.repaidAmount !== undefined) {
         const loan = await Loan.findOne({ _id: id, userId: user._id });
@@ -557,8 +605,21 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
     }
 
     if (request.method === 'DELETE' && id) {
-      const deleted = await model.findOneAndDelete({ _id: id, userId: user._id });
-      if (!deleted) return send(response, 404, { message: 'Record not found' });
+        if (resource === 'transactions') {
+           const tx = await Transaction.findOne({ _id: id, userId: user._id });
+           if (!tx) return send(response, 404, { message: 'Record not found' });
+           if (tx.type === 'expense' && tx.creditCardId) {
+               const card = await CreditCard.findOne({ _id: tx.creditCardId, userId: user._id });
+               if (card) {
+                   if (card.currentBalance - tx.amount < 0) return send(response, 400, { message: 'Deleting this transaction would cause card balance to become negative.' });
+                   card.currentBalance -= tx.amount;
+                   await card.save();
+               }
+           }
+        }
+        
+        const deleted = await model.findOneAndDelete({ _id: id, userId: user._id });
+        if (!deleted) return send(response, 404, { message: 'Record not found' });
       
       // Cascade delete related transactions for loans and subscriptions
       if (resource === 'loans' || resource === 'subscriptions') {

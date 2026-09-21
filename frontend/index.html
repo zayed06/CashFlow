@@ -155,8 +155,15 @@
           <input id="expenseDescription" placeholder="Description" required>
           <input id="expenseAmount" type="number" min="0" step="0.01" placeholder="Amount" required>
           <select id="expenseCategory" required style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
-             <option value="">Select Category</option>
-          </select>
+               <option value="">Select Category</option>
+            </select>
+            <select id="expensePaymentMethod" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);" onchange="document.getElementById('expenseCreditCard').style.display = this.value === 'credit_card' ? 'block' : 'none'; document.getElementById('expenseCreditCard').required = this.value === 'credit_card';">
+               <option value="cash">Cash</option>
+               <option value="credit_card">Credit Card</option>
+            </select>
+            <select id="expenseCreditCard" style="display: none; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+               <option value="">Select Credit Card</option>
+            </select>
           <input id="expenseDate" type="date" required>
           <button id="addTransactionBtn" class="primary-button" type="submit">Add Transaction</button>
         </form>
@@ -327,7 +334,14 @@
 
   <dialog id="moneyDialog"><div class="dialog"><h2 id="moneyTitle">Add Money</h2><p class="muted">Enter the amount you want to record.</p><form id="moneyForm"><input id="moneyAmount" type="number" min="0" step="0.01" placeholder="Amount" required><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelMoney">Cancel</button><button class="primary-button" id="saveMoney">Save</button></div></form></div></dialog>
 
-  <dialog id="editTxDialog"><div class="dialog"><h2>Edit Transaction</h2><form id="editTxForm"><input type="hidden" id="editTxId"><input id="editTxDescription" placeholder="Description" required style="margin-top:10px;"><input id="editTxAmount" type="number" min="0" step="0.01" placeholder="Amount" required style="margin-top:10px;"><select id="editTxCategory" style="margin-top:10px; width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--border);"><option value="">Select Category</option></select><div class="dialog-actions" style="margin-top:18px;"><button type="button" class="secondary-button" onclick="$('editTxDialog').close()">Cancel</button><button class="primary-button" type="submit">Save</button></div></form></div></dialog>
+  <dialog id="editTxDialog"><div class="dialog"><h2>Edit Transaction</h2><form id="editTxForm"><input type="hidden" id="editTxId"><input id="editTxDescription" placeholder="Description" required style="margin-top:10px;"><input id="editTxAmount" type="number" min="0" step="0.01" placeholder="Amount" required style="margin-top:10px;"><select id="editTxCategory" style="margin-top:10px; width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--border);"><option value="">Select Category</option></select>
+<select id="editTxPaymentMethod" style="margin-top:10px; width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--border);" onchange="document.getElementById('editTxCreditCard').style.display = this.value === 'credit_card' ? 'block' : 'none'; document.getElementById('editTxCreditCard').required = this.value === 'credit_card';">
+  <option value="cash">Cash</option>
+  <option value="credit_card">Credit Card</option>
+</select>
+<select id="editTxCreditCard" style="display: none; margin-top:10px; width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--border);">
+  <option value="">Select Credit Card</option>
+</select><div class="dialog-actions" style="margin-top:18px;"><button type="button" class="secondary-button" onclick="$('editTxDialog').close()">Cancel</button><button class="primary-button" type="submit">Save</button></div></form></div></dialog>
 
 
   <dialog id="ccDialog">

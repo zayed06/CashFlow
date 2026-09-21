@@ -51,6 +51,7 @@ async function load(){
 async function reloadAnalytics(){
   state.analytics = await api('analytics');
   state.notifications = await api('notifications');
+  state.creditCards = await api('credit-cards');
 }
 
 function calculate(){
@@ -64,6 +65,7 @@ function render(){
     const tb = $('topbarBalance'); if (tb) tb.textContent = '💰 Current Balance: ' + money(c.balance);
   $('spent').textContent=`Spent ${money(c.spent)}`;
   renderTransactions();renderSubscriptions();renderLoans();renderCategories();renderNotifications();renderCreditCards();
+    populateCreditCardDropdowns();
   if(state.analytics) renderAnalytics();
 }
 
@@ -72,6 +74,23 @@ const typeLabels = {
   loan_given: 'Loan Given', loan_repayment: 'Loan Repayment', subscription: 'Subscription'
 };
 
+
+function populateCreditCardDropdowns() {
+  const expenseCC = $('expenseCreditCard');
+  const editCC = $('editTxCreditCard');
+  if (!expenseCC || !editCC) return;
+  const options = '<option value="">Select Credit Card</option>' + (state.creditCards || []).map(c => `<option value="${c._id}">${c.name} (•••• ${c.last4})</option>`).join('');
+  
+  // preserve existing selected value if any
+  const oldExp = expenseCC.value;
+  expenseCC.innerHTML = options;
+  if (oldExp) expenseCC.value = oldExp;
+  
+  const oldEdit = editCC.value;
+  editCC.innerHTML = options;
+  if (oldEdit) editCC.value = oldEdit;
+}
+
 function renderTransactions(){
   const catMap = {};
   state.categories.forEach(c => catMap[c._id] = c.name);
@@ -79,8 +98,13 @@ function renderTransactions(){
     const isPositive = ['add_money', 'income', 'loan_repayment'].includes(t.type);
     const sign = isPositive ? '+' : '-';
     const catName = t.categoryId ? ` · ${esc(catMap[t.categoryId] || 'Unknown')}` : '';
+      let paymentBadge = '';
+      if (t.type === 'expense' && t.creditCardId) {
+          const cCard = state.creditCards.find(c => c._id === t.creditCardId);
+          paymentBadge = cCard ? ` • 💳 ${esc(cCard.name)} (•••• ${cCard.last4})` : ' • 💳 Credit Card';
+      }
     const editBtn = `<button class="delete" onclick="openEditTx('${t._id}')" style="color:var(--primary)">Edit</button>`;
-    return `<div class="item"><div class="item-main"><strong>${esc(t.description)}</strong><span>${typeLabels[t.type]} · ${new Date(t.date).toLocaleDateString('en-IN')}${catName}</span></div><div class="item-right"><span class="amount">${sign}${money(t.amount)}</span>${editBtn}<button class="delete" onclick="removeItem('transactions','${t._id}')">Delete</button></div></div>`
+    return `<div class="item"><div class="item-main"><strong>${esc(t.description)}</strong><span>${typeLabels[t.type]} · ${new Date(t.date).toLocaleDateString('en-IN')}${catName}${paymentBadge}</span></div><div class="item-right"><span class="amount">${sign}${money(t.amount)}</span>${editBtn}<button class="delete" onclick="removeItem('transactions','${t._id}')">Delete</button></div></div>`
   }).join('')||empty('No transactions found.')
 }
 
@@ -284,7 +308,24 @@ window.openEditTx = id => {
   const options = `<option value="">No Category</option>` + state.categories.map(c=>`<option value="${c._id}" ${c._id===t.categoryId?'selected':''}>${esc(c.name)}</option>`).join('');
   $('editTxCategory').innerHTML = options;
   $('editTxCategory').style.display = ['expense', 'income', 'subscription'].includes(t.type) ? 'block' : 'none';
-  $('editTxDialog').showModal();
+    
+    if (t.type === 'expense') {
+        $('editTxPaymentMethod').style.display = 'block';
+        if (t.creditCardId) {
+            $('editTxPaymentMethod').value = 'credit_card';
+            $('editTxCreditCard').style.display = 'block';
+            $('editTxCreditCard').value = t.creditCardId;
+        } else {
+            $('editTxPaymentMethod').value = 'cash';
+            $('editTxCreditCard').style.display = 'none';
+            $('editTxCreditCard').value = '';
+        }
+    } else {
+        $('editTxPaymentMethod').style.display = 'none';
+        $('editTxCreditCard').style.display = 'none';
+    }
+    
+    $('editTxDialog').showModal();
 };
 
 $('editTxForm').onsubmit = async e => {
@@ -297,7 +338,17 @@ $('editTxForm').onsubmit = async e => {
     const description = $('editTxDescription').value;
     const categoryId = $('editTxCategory').value || null;
     if (amount <= 0) throw new Error('Invalid amount');
-    const updated = await api(`transactions/${id}`, { method: 'PUT', body: JSON.stringify({ amount, description, categoryId }) });
+    
+      let creditCardId = undefined;
+      const tOld = state.transactions.find(x => x._id === id);
+      if (tOld && tOld.type === 'expense') {
+         if ($('editTxPaymentMethod').value === 'credit_card') {
+             creditCardId = $('editTxCreditCard').value || null;
+         } else {
+             creditCardId = null;
+         }
+      }
+      const updated = await api(`transactions/${id}`, { method: 'PUT', body: JSON.stringify({ amount, description, categoryId, ...(creditCardId !== undefined && { creditCardId }) }) });
     const idx = state.transactions.findIndex(x => x._id === id);
     if(idx !== -1) state.transactions[idx] = updated;
     $('editTxDialog').close();
@@ -392,12 +443,13 @@ $('expenseForm').onsubmit=async e=>{
     const amount = +$('expenseAmount').value;
     if (amount <= 0) throw new Error('Amount must be greater than 0');
     const x=await api('transactions',{method:'POST',body:JSON.stringify({
-      type:$('expenseType').value,
-      description:$('expenseDescription').value,
-      amount,
-      categoryId:$('expenseCategory').value || null,
-      date:new Date($('expenseDate').value+'T12:00:00')
-    })});
+        type:$('expenseType').value,
+        description:$('expenseDescription').value,
+        amount,
+        categoryId:$('expenseCategory').value || null,
+        creditCardId: ($('expenseType').value === 'expense' && $('expensePaymentMethod').value === 'credit_card') ? $('expenseCreditCard').value || null : undefined,
+        date:new Date($('expenseDate').value+'T12:00:00')
+      })});
     state.transactions.unshift(x);
     e.target.reset();
     $('expenseDate').value=new Date().toISOString().slice(0,10);
@@ -905,3 +957,15 @@ if ($('ccForm')) {
     }
   };
 }
+
+$('expenseType').onchange = function() {
+    const isExpense = this.value === 'expense';
+    const pm = $('expensePaymentMethod');
+    const cc = $('expenseCreditCard');
+    if (pm) pm.style.display = isExpense ? 'block' : 'none';
+    if (cc && pm && pm.value === 'credit_card' && isExpense) {
+        cc.style.display = 'block';
+    } else if (cc) {
+        cc.style.display = 'none';
+    }
+};
