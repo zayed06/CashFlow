@@ -5,6 +5,7 @@ const schema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   passwordHash: { type: String },
   googleId: { type: String, unique: true, sparse: true },
+  currency: { type: String, default: 'INR', uppercase: true, trim: true, maxlength: 3 },
 }, { timestamps: true });
 
 export default mongoose.model('User', schema);

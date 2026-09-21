@@ -97,6 +97,17 @@ export async function handleApi(request, response) {
 
   await processDueSubscriptions(user._id);
 
+    if (parts[1] === 'user' && parts[2] === 'settings' && request.method === 'PUT') {
+      const body = await readJson(request);
+      const validCurrencies = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'CAD', 'AUD', 'JPY', 'CHF'];
+      if (body.currency && validCurrencies.includes(body.currency)) {
+        user.currency = body.currency;
+        await user.save();
+      }
+      return send(response, 200, { success: true, currency: user.currency || 'INR' });
+    }
+
+
   const resource = parts[1];
   const id = parts[2];
 
@@ -189,18 +200,21 @@ export async function handleApi(request, response) {
          }
       });
 
-      const systemInstruction = `You are CashFlow AI, a read-only financial assistant. Answer the user's questions clearly based ONLY on this JSON data representing their finances. Use ₹ for amounts. Distinguish past (processed) from future (scheduled). Be concise and do not invent transactions.
+            const currency = user.currency || 'INR';
+      const symMap = { INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ', CAD: 'CA$', AUD: 'A$', JPY: '¥', CHF: 'CHF' };
+      const sym = symMap[currency] || '₹';
+      const systemInstruction = `You are CashFlow AI, a read-only financial assistant. Answer the user's questions clearly based ONLY on this JSON data representing their finances. Use ${sym} for amounts. Distinguish past (processed) from future (scheduled). Be concise and do not invent transactions.
 IMPORTANT FORMATTING RULES:
 - Do NOT use LaTeX.
 - Do NOT use $$...$$.
 - Do NOT use \\mathbf{}, \\text{}, or other LaTeX commands.
-- Write calculations as normal plain text (e.g. Current Balance = ₹11,200 - ₹3,120 = ₹8,080).
+- Write calculations as normal plain text (e.g. Current Balance = ${sym}11,200 - ${sym}3,120 = ${sym}8,080).
 - Continue using normal Markdown for headings, bold text, and bullet lists.
 
 Data:
-Current Balance: ₹${balance}
-Total Inflows: ₹${totalInflows}
-Total Outflows: ₹${totalOutflows}
+Current Balance: ${sym}${balance}
+Total Inflows: ${sym}${totalInflows}
+Total Outflows: ${sym}${totalOutflows}
 Budgets: ${JSON.stringify(simplifiedBudgets)}
 Loans: ${JSON.stringify(simplifiedLoans)}
 Subscriptions: ${JSON.stringify(simplifiedSubs)}
@@ -485,6 +499,17 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
 
         created = await Subscription.create({ ...body, userId: user._id, categoryId: subCat._id });
         await processDueSubscriptions(user._id);
+
+    if (parts[1] === 'user' && parts[2] === 'settings' && request.method === 'PUT') {
+      const body = await readJson(request);
+      const validCurrencies = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'CAD', 'AUD', 'JPY', 'CHF'];
+      if (body.currency && validCurrencies.includes(body.currency)) {
+        user.currency = body.currency;
+        await user.save();
+      }
+      return send(response, 200, { success: true, currency: user.currency || 'INR' });
+    }
+
         created = await Subscription.findById(created._id);
       }
 

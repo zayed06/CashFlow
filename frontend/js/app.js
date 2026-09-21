@@ -1,6 +1,7 @@
 const state={transactions:[],subscriptions:[],loans:[],categories:[],notifications:[],moneyAction:'add'};
 const $=id=>document.getElementById(id);
-const money=n=>`₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+let userCurrency = 'INR';
+const money = n => new Intl.NumberFormat(undefined, { style: 'currency', currency: userCurrency }).format(Number(n || 0));
 const api=async(path,options={})=>{
   const r=await fetch('/api/'+path,{headers:{'Content-Type':'application/json'},...options});
   const data=await r.json();
@@ -14,6 +15,10 @@ async function requireAuth(){
   if(!response.ok){location.href='/login';return null}
   const data=await response.json();
   $('userName').textContent=data.user.name;
+  userCurrency = data.user.currency || 'INR';
+  const cs = $('currencySelect');
+  if (cs) cs.value = userCurrency;
+
   document.body.style.display = '';
   return data.user;
 }
@@ -56,6 +61,7 @@ function calculate(){
 function render(){
   const c=calculate();
   $('balance').textContent=money(c.balance);
+    const tb = $('topbarBalance'); if (tb) tb.textContent = '💰 Current Balance: ' + money(c.balance);
   $('spent').textContent=`Spent ${money(c.spent)}`;
   renderTransactions();renderSubscriptions();renderLoans();renderCategories();renderNotifications();
   if(state.analytics) renderAnalytics();
@@ -710,3 +716,19 @@ if (document.readyState === 'loading') {
   const aiInput = document.getElementById('aiInput');
   if (aiInput) aiInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendAiMessage(); });
 }
+
+async function updateCurrency() {
+  const newCurrency = $('currencySelect').value;
+  try {
+    const res = await api('user/settings', { method: 'PUT', body: JSON.stringify({ currency: newCurrency }) });
+    if (res.success) {
+      userCurrency = res.currency;
+      render();
+      await reloadAnalytics();
+      toast('Currency updated');
+    }
+  } catch (e) {
+    toast(e.message);
+  }
+}
+window.updateCurrency = updateCurrency;

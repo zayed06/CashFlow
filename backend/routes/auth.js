@@ -101,7 +101,7 @@ export function send(response, status, data) {
   return true;
 }
 
-function safeUser(user) { return { id: user._id, name: user.name, email: user.email, createdAt: user.createdAt }; }
+function safeUser(user) { return { id: user._id, name: user.name, email: user.email, currency: user.currency || 'INR', createdAt: user.createdAt }; }
 
 function readJson(request) {
   return new Promise((resolve, reject) => {
