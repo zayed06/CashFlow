@@ -1,4 +1,4 @@
-const state={transactions:[],subscriptions:[],loans:[],categories:[],notifications:[],moneyAction:'add'};
+const state={transactions:[],subscriptions:[],loans:[],categories:[],notifications:[],creditCards:[],moneyAction:'add'};
 const $=id=>document.getElementById(id);
 let userCurrency = 'INR';
 const money = n => new Intl.NumberFormat(undefined, { style: 'currency', currency: userCurrency }).format(Number(n || 0));
@@ -41,8 +41,8 @@ async function fetchTransactions() {
 
 async function load(){
   try{
-    const results = await Promise.all([api('subscriptions'),api('loans'),api('categories'),api('notifications'),api('analytics')]);
-    [state.subscriptions,state.loans,state.categories,state.notifications,state.analytics] = results;
+    const results = await Promise.all([api('subscriptions'),api('loans'),api('categories'),api('notifications'),api('analytics'),api('credit-cards')]);
+    [state.subscriptions,state.loans,state.categories,state.notifications,state.analytics,state.creditCards] = results;
     await fetchTransactions();
     render();
   }catch(e){toast('Could not connect to MongoDB/server');console.error(e)}
@@ -63,7 +63,7 @@ function render(){
   $('balance').textContent=money(c.balance);
     const tb = $('topbarBalance'); if (tb) tb.textContent = '💰 Current Balance: ' + money(c.balance);
   $('spent').textContent=`Spent ${money(c.spent)}`;
-  renderTransactions();renderSubscriptions();renderLoans();renderCategories();renderNotifications();
+  renderTransactions();renderSubscriptions();renderLoans();renderCategories();renderNotifications();renderCreditCards();
   if(state.analytics) renderAnalytics();
 }
 
@@ -732,3 +732,176 @@ async function updateCurrency() {
   }
 }
 window.updateCurrency = updateCurrency;
+
+function renderCreditCards() {
+  const ccList = $('ccList');
+  if (!ccList) return;
+  if (!state.creditCards || state.creditCards.length === 0) {
+    ccList.innerHTML = `
+      <div style="text-align:center; padding: 30px 15px;">
+        <p class="muted" style="font-size: 16px; font-weight: 500;">No credit cards added yet.</p>
+        <p class="muted" style="margin-bottom: 20px; font-size: 14px;">Add your first credit card to start tracking<br>your credit limit and balances.</p>
+        <button class="primary-button" style="width: auto; padding: 0.6rem 1.2rem;" onclick="openCCModal()">+ Add Credit Card</button>
+      </div>
+    `;
+    return;
+  }
+  
+  ccList.innerHTML = state.creditCards.map(c => {
+    const current = (typeof c.currentBalance === 'number') ? c.currentBalance : 0;
+    const limit = (typeof c.creditLimit === 'number' && c.creditLimit > 0) ? c.creditLimit : 0;
+    
+    const availableCredit = limit - current;
+    let utilRaw = (limit > 0) ? (current / limit) * 100 : 0;
+    if (!isFinite(utilRaw) || isNaN(utilRaw)) utilRaw = 0;
+    
+    const utilization = utilRaw.toFixed(2) + '%';
+    const utilBarWidth = Math.min(Math.max(utilRaw, 0), 100);
+    
+    const statBal = (c.statementBalance != null) ? money(c.statementBalance) : '-';
+    const minPay = (c.minimumPayment != null) ? money(c.minimumPayment) : '-';
+    const statDate = c.statementDate ? c.statementDate : '-';
+    const dueDate = c.dueDate ? c.dueDate : '-';
+    
+    return `
+      <div class="card" style="margin-bottom: 20px; border: 1px solid var(--border); box-shadow: none;">
+        <!-- Header -->
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 16px;">
+          <div>
+            <h3 style="margin:0; font-size:18px;">${c.name ? c.name.replace(/</g, "&lt;") : '-'}</h3>
+            <p class="muted" style="margin:4px 0 0 0; font-size:13px;">${c.issuer ? c.issuer.replace(/</g, "&lt;") : '-'} &bull; ${c.network ? c.network.replace(/</g, "&lt;") : '-'} &bull;&bull;&bull;&bull; ${c.last4 ? c.last4.replace(/</g, "&lt;") : '-'}</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="icon-button" onclick="editCC('${c._id}')" title="Edit">✏️</button>
+            <button class="icon-button" onclick="deleteCC('${c._id}')" title="Delete" style="color:var(--danger)">🗑️</button>
+          </div>
+        </div>
+        
+        <!-- Main Information -->
+        <div style="margin-bottom: 18px;">
+          <span class="muted" style="font-size:12px; font-weight:600; letter-spacing:0.5px;">CURRENT BALANCE</span>
+          <div style="font-size:26px; font-weight:bold; color:var(--text); margin-top:2px;">${money(current)}</div>
+        </div>
+
+        <!-- Utilization Visual -->
+        <div style="margin-bottom: 20px;">
+          <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:600; letter-spacing:0.5px; margin-bottom: 8px;">
+            <span class="muted">CREDIT UTILIZATION</span>
+            <span>${utilization}</span>
+          </div>
+          <div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden;">
+            <div style="height:100%; width:${utilBarWidth}%; background:var(--primary); border-radius:4px;"></div>
+          </div>
+        </div>
+
+        <!-- Secondary Information -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:16px; font-size:14px; margin-bottom: 20px;">
+          <div>
+            <strong style="color:var(--muted); font-size:12px; letter-spacing:0.5px;">AVAILABLE CREDIT</strong><br>
+            <span style="font-size:15px;">${money(availableCredit)}</span>
+          </div>
+          <div>
+            <strong style="color:var(--muted); font-size:12px; letter-spacing:0.5px;">CREDIT LIMIT</strong><br>
+            <span style="font-size:15px;">${money(limit)}</span>
+          </div>
+        </div>
+
+        <!-- Payment Information & Dates -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:16px; font-size:14px; padding-top: 16px; border-top: 1px dashed var(--border);">
+          <div>
+            <strong style="color:var(--muted); font-size:12px; letter-spacing:0.5px;">STATEMENT BALANCE</strong><br>
+            <span style="font-size:14px;">${statBal}</span>
+          </div>
+          <div>
+            <strong style="color:var(--muted); font-size:12px; letter-spacing:0.5px;">MINIMUM PAYMENT</strong><br>
+            <span style="font-size:14px;">${minPay}</span>
+          </div>
+          <div>
+            <strong style="color:var(--muted); font-size:12px; letter-spacing:0.5px;">STATEMENT DATE</strong><br>
+            <span style="font-size:14px;">${statDate}</span>
+          </div>
+          <div>
+            <strong style="color:var(--muted); font-size:12px; letter-spacing:0.5px;">DUE DATE</strong><br>
+            <span style="font-size:14px;">${dueDate}</span>
+          </div>
+        </div>
+        
+      </div>
+    `;
+  }).join('');
+}
+
+window.openCCModal = () => {
+  $('ccForm').reset();
+  $('ccId').value = '';
+  $('ccTitle').textContent = 'Add Credit Card';
+  $('ccDialog').showModal();
+};
+
+window.editCC = (id) => {
+  const c = state.creditCards.find(x => x._id === id);
+  if (!c) return;
+  $('ccId').value = c._id;
+  $('ccName').value = c.name;
+  $('ccIssuer').value = c.issuer;
+  $('ccLast4').value = c.last4;
+  $('ccNetwork').value = c.network;
+  $('ccLimit').value = c.creditLimit;
+  $('ccBalance').value = c.currentBalance;
+  $('ccStatementBalance').value = c.statementBalance;
+  $('ccMinPayment').value = c.minimumPayment;
+  $('ccStatementDate').value = c.statementDate || '';
+  $('ccDueDate').value = c.dueDate || '';
+  $('ccTitle').textContent = 'Edit Credit Card';
+  $('ccDialog').showModal();
+};
+
+window.deleteCC = async (id) => {
+  if (!confirm('Are you sure you want to delete this credit card?')) return;
+  try {
+    await api('credit-cards/' + id, { method: 'DELETE' });
+    state.creditCards = state.creditCards.filter(x => x._id !== id);
+    renderCreditCards();
+    toast('Credit card deleted');
+  } catch(e) { toast(e.message); }
+};
+
+if ($('ccForm')) {
+  $('ccForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    const body = {
+      name: $('ccName').value,
+      issuer: $('ccIssuer').value,
+      last4: $('ccLast4').value,
+      network: $('ccNetwork').value,
+      creditLimit: Number($('ccLimit').value),
+      currentBalance: Number($('ccBalance').value),
+      statementBalance: Number($('ccStatementBalance').value),
+      minimumPayment: Number($('ccMinPayment').value)
+    };
+    if ($('ccStatementDate').value) body.statementDate = Number($('ccStatementDate').value);
+    if ($('ccDueDate').value) body.dueDate = Number($('ccDueDate').value);
+    
+    const id = $('ccId').value;
+    try {
+      if (id) {
+        const updated = await api('credit-cards/' + id, { method: 'PUT', body: JSON.stringify(body) });
+        const idx = state.creditCards.findIndex(x => x._id === id);
+        if (idx >= 0) state.creditCards[idx] = updated;
+        toast('Credit card updated');
+      } else {
+        const created = await api('credit-cards', { method: 'POST', body: JSON.stringify(body) });
+        state.creditCards.unshift(created);
+        toast('Credit card added');
+      }
+      renderCreditCards();
+      $('ccDialog').close();
+    } catch(err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+}

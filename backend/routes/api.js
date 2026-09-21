@@ -6,10 +6,11 @@ import Transaction from '../models/Transaction.js';
 import Category from '../models/Category.js';
 import Budget from '../models/Budget.js';
 import Notification from '../models/Notification.js';
+import CreditCard from '../models/CreditCard.js';
 import { getCurrentUser } from '../auth.js';
 import { handleAuth, send } from './auth.js';
 
-const models = { subscriptions: Subscription, loans: Loan, transactions: Transaction, categories: Category, budgets: Budget, notifications: Notification };
+const models = { subscriptions: Subscription, loans: Loan, transactions: Transaction, categories: Category, budgets: Budget, notifications: Notification, 'credit-cards': CreditCard };
 
 // Helper to validate amounts
 function isValidAmount(amount) {
@@ -511,9 +512,12 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
     }
 
         created = await Subscription.findById(created._id);
-      }
+        }
+        else if (resource === 'credit-cards') {
+          created = await CreditCard.create({ ...body, userId: user._id });
+        }
 
-      return send(response, 201, created);
+        return send(response, 201, created);
     }
 
     if (request.method === 'PUT' && id) {

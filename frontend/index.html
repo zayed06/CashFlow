@@ -19,6 +19,7 @@
         <button class="sidebar-tab tab active" data-tab="analytics">📊 <span>Dashboard</span></button>
         <button class="sidebar-tab tab" data-tab="transactions">▣ <span>Transactions</span></button>
         <button class="sidebar-tab tab" data-tab="subscriptions">↻ <span>Subscriptions</span></button>
+          <button class="sidebar-tab tab" data-tab="creditcards">💳 <span>Credit Cards</span></button>
         <button class="sidebar-tab tab" data-tab="loans">♧ <span>Lent</span></button>
         <button class="sidebar-tab tab" data-tab="budget">💰 <span>Budget & Categories</span></button>
         <button class="sidebar-tab tab" data-tab="ai">✨ <span>AI Assistant</span></button>
@@ -152,7 +153,7 @@
              <option value="income">Income</option>
           </select>
           <input id="expenseDescription" placeholder="Description" required>
-          <input id="expenseAmount" type="number" min="0" step="10" placeholder="Amount" required>
+          <input id="expenseAmount" type="number" min="0" step="0.01" placeholder="Amount" required>
           <select id="expenseCategory" required style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
              <option value="">Select Category</option>
           </select>
@@ -198,7 +199,7 @@
              </div>
              <div>
                <button type="button" class="primary-button" style="width: auto; padding: 0.6rem 1rem; background: #10b981;" onclick="exportTransactions('csv')">Export CSV</button>
-               <button type="button" class="primary-button" style="width: auto; padding: 0.6rem 1rem; background: #6366f1;" onclick="exportTransactions('json')">Export JSON</button>
+               
              </div>
           </div>
         </form>
@@ -219,7 +220,7 @@
       <div class="card"><div class="card-title">Add a subscription</div>
         <form id="subscriptionForm" class="form-grid">
           <input id="subscriptionName" placeholder="Subscription name" required>
-          <input id="subscriptionAmount" type="number" min="0" step="10" placeholder="Amount" required>
+          <input id="subscriptionAmount" type="number" min="0" step="0.01" placeholder="Amount" required>
           <select id="subscriptionFrequency" required style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
              <option value="one-time">One-time</option>
              <option value="weekly">Weekly</option>
@@ -237,7 +238,7 @@
       <div class="card"><div class="card-title">Record money lent</div>
         <form id="loanForm" class="form-grid">
           <input id="loanPerson" placeholder="Person" required>
-          <input id="loanAmount" type="number" min="0" step="10" placeholder="Amount" required>
+          <input id="loanAmount" type="number" min="0" step="0.01" placeholder="Amount" required>
           <button class="primary-button" type="submit">Add Lent Money</button>
         </form>
       </div>
@@ -247,7 +248,7 @@
     <section id="budget" class="tab-panel container">
       <div class="card"><div class="card-title">Set Monthly Budget</div>
         <form id="budgetForm" class="form-grid">
-          <input id="budgetAmount" type="number" min="0" step="10" placeholder="Monthly Budget" required>
+          <input id="budgetAmount" type="number" min="0" step="0.01" placeholder="Monthly Budget" required>
           <button class="primary-button" type="submit">Save Budget</button>
         </form>
       </div>
@@ -309,15 +310,77 @@
         </div>
       </div>
     </section>
+  
+    <section id="creditcards" class="tab-panel container">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <div class="card-title" style="margin: 0;">Credit Cards</div>
+          <button class="primary-button" style="width: auto; padding: 0.5rem 1rem;" onclick="openCCModal()">+ Add Credit Card</button>
+        </div>
+        <div id="ccList"></div>
+      </div>
+    </section>
   </main>
 
   </div>
   </div>
 
-  <dialog id="moneyDialog"><div class="dialog"><h2 id="moneyTitle">Add Money</h2><p class="muted">Enter the amount you want to record.</p><form id="moneyForm"><input id="moneyAmount" type="number" min="0" step="10" placeholder="Amount" required><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelMoney">Cancel</button><button class="primary-button" id="saveMoney">Save</button></div></form></div></dialog>
+  <dialog id="moneyDialog"><div class="dialog"><h2 id="moneyTitle">Add Money</h2><p class="muted">Enter the amount you want to record.</p><form id="moneyForm"><input id="moneyAmount" type="number" min="0" step="0.01" placeholder="Amount" required><div class="dialog-actions"><button type="button" class="secondary-button" id="cancelMoney">Cancel</button><button class="primary-button" id="saveMoney">Save</button></div></form></div></dialog>
 
-  <dialog id="editTxDialog"><div class="dialog"><h2>Edit Transaction</h2><form id="editTxForm"><input type="hidden" id="editTxId"><input id="editTxDescription" placeholder="Description" required style="margin-top:10px;"><input id="editTxAmount" type="number" min="0" step="10" placeholder="Amount" required style="margin-top:10px;"><select id="editTxCategory" style="margin-top:10px; width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--border);"><option value="">Select Category</option></select><div class="dialog-actions" style="margin-top:18px;"><button type="button" class="secondary-button" onclick="$('editTxDialog').close()">Cancel</button><button class="primary-button" type="submit">Save</button></div></form></div></dialog>
+  <dialog id="editTxDialog"><div class="dialog"><h2>Edit Transaction</h2><form id="editTxForm"><input type="hidden" id="editTxId"><input id="editTxDescription" placeholder="Description" required style="margin-top:10px;"><input id="editTxAmount" type="number" min="0" step="0.01" placeholder="Amount" required style="margin-top:10px;"><select id="editTxCategory" style="margin-top:10px; width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--border);"><option value="">Select Category</option></select><div class="dialog-actions" style="margin-top:18px;"><button type="button" class="secondary-button" onclick="$('editTxDialog').close()">Cancel</button><button class="primary-button" type="submit">Save</button></div></form></div></dialog>
 
+
+  <dialog id="ccDialog">
+  <div class="dialog">
+    <h2 id="ccTitle">Add Credit Card</h2>
+    <form id="ccForm">
+      <input type="hidden" id="ccId">
+      
+      <label for="ccName" style="display:block; margin-top:10px; font-size:13px; font-weight:600; margin-bottom:4px;">Card Name</label>
+      <input id="ccName" placeholder="Card Name (e.g. HDFC Regalia)" required style="width:100%;">
+      
+      <label for="ccIssuer" style="display:block; margin-top:10px; font-size:13px; font-weight:600; margin-bottom:4px;">Issuer</label>
+      <input id="ccIssuer" placeholder="Issuer / Bank" required style="width:100%;">
+      
+      <label for="ccLast4" style="display:block; margin-top:10px; font-size:13px; font-weight:600; margin-bottom:4px;">Last 4 Digits</label>
+      <input id="ccLast4" type="text" pattern="\d{4}" title="Exactly 4 numeric digits" placeholder="Last 4 digits" maxlength="4" required style="width:100%;">
+      
+      <label for="ccNetwork" style="display:block; margin-top:10px; font-size:13px; font-weight:600; margin-bottom:4px;">Network</label>
+      <select id="ccNetwork" required style="width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--border);">
+        <option value="">Select Network</option>
+        <option value="Visa">Visa</option>
+        <option value="Mastercard">Mastercard</option>
+        <option value="American Express">American Express</option>
+        <option value="RuPay">RuPay</option>
+        <option value="Discover">Discover</option>
+        <option value="Other">Other</option>
+      </select>
+      
+      <label for="ccLimit" style="display:block; margin-top:10px; font-size:13px; font-weight:600; margin-bottom:4px;">Credit Limit</label>
+      <input id="ccLimit" type="number" min="0.01" step="0.01" placeholder="Credit Limit" required style="width:100%;">
+      
+      <label for="ccBalance" style="display:block; margin-top:10px; font-size:13px; font-weight:600; margin-bottom:4px;">Current Balance</label>
+      <input id="ccBalance" type="number" min="0" step="0.01" placeholder="Current Balance" required style="width:100%;">
+      
+      <label for="ccStatementBalance" style="display:block; margin-top:10px; font-size:13px; font-weight:600; margin-bottom:4px;">Statement Balance</label>
+      <input id="ccStatementBalance" type="number" min="0" step="0.01" placeholder="Statement Balance" required style="width:100%;">
+      
+      <label for="ccMinPayment" style="display:block; margin-top:10px; font-size:13px; font-weight:600; margin-bottom:4px;">Minimum Payment</label>
+      <input id="ccMinPayment" type="number" min="0" step="0.01" placeholder="Minimum Payment" required style="width:100%;">
+      
+      <label for="ccStatementDate" style="display:block; margin-top:10px; font-size:13px; font-weight:600; margin-bottom:4px;">Statement Date</label>
+      <input id="ccStatementDate" type="number" min="1" max="31" placeholder="Statement Date (1-31)" style="width:100%;">
+      
+      <label for="ccDueDate" style="display:block; margin-top:10px; font-size:13px; font-weight:600; margin-bottom:4px;">Due Date</label>
+      <input id="ccDueDate" type="number" min="1" max="31" placeholder="Payment Due Date (1-31)" style="width:100%;">
+      
+      <div class="dialog-actions" style="margin-top:18px;">
+        <button type="button" class="secondary-button" onclick="$('ccDialog').close()">Cancel</button>
+        <button class="primary-button" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</dialog>
   <div id="toast" class="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
