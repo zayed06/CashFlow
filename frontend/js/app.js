@@ -2,6 +2,12 @@ const state={transactions:[],subscriptions:[],loans:[],categories:[],notificatio
 const $=id=>document.getElementById(id);
 let userCurrency = 'INR';
 const money = n => new Intl.NumberFormat(undefined, { style: 'currency', currency: userCurrency }).format(Number(n || 0));
+window.getLocalDateString = function() {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0,10);
+};
+window.lastDefaultDate = window.getLocalDateString();
 const api=async(path,options={})=>{
   const r=await fetch('/api/'+path,{headers:{'Content-Type':'application/json'},...options});
   const data=await r.json();
@@ -513,17 +519,26 @@ window.clearAllNotifications = async () => {
   } catch(e) { toast(e.message); }
 };
 
-$('expenseDate').value=new Date().toISOString().slice(0,10);
-$('subscriptionDate').value=new Date().toISOString().slice(0,10);
+$('expenseDate').value=window.getLocalDateString();
+$('subscriptionDate').value=window.getLocalDateString();
 $('today').textContent=new Date().toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
 
-document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.tab,.tab-panel').forEach(x => x.classList.remove('active'));
-  b.classList.add('active');
-  $(b.dataset.tab).classList.add('active');
-  const bc = $('mainBalanceCard');
-  if (bc) bc.style.display = (b.dataset.tab === 'ai') ? 'none' : '';
-});
+  document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.tab,.tab-panel').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    $(b.dataset.tab).classList.add('active');
+    const bc = $('mainBalanceCard');
+    if (bc) bc.style.display = (b.dataset.tab === 'ai') ? 'none' : '';
+
+    const newDate = window.getLocalDateString();
+    if (newDate !== window.lastDefaultDate) {
+        if ($('expenseDate') && $('expenseDate').value === window.lastDefaultDate) $('expenseDate').value = newDate;
+        if ($('subscriptionDate') && $('subscriptionDate').value === window.lastDefaultDate) $('subscriptionDate').value = newDate;
+        if ($('lensDate') && $('lensDate').value === window.lastDefaultDate) $('lensDate').value = newDate;
+        window.lastDefaultDate = newDate;
+        $('today').textContent = new Date().toLocaleDateString('en-IN', {weekday:'short', day:'numeric', month:'short'});
+    }
+  });
 
 $('categoryForm').onsubmit=async e=>{
   e.preventDefault();
@@ -574,7 +589,7 @@ $('expenseForm').onsubmit=async e=>{
       })});
     state.transactions.unshift(x);
     e.target.reset();
-    $('expenseDate').value=new Date().toISOString().slice(0,10);
+    $('expenseDate').value=window.getLocalDateString();
     await reloadAnalytics();
     render();toast('Transaction logged')
   }catch(e){toast(e.message)}
@@ -597,7 +612,7 @@ $('subscriptionForm').onsubmit=async e=>{
     state.subscriptions.unshift(sub);
     await fetchTransactions();
     e.target.reset();
-    $('subscriptionDate').value=new Date().toISOString().slice(0,10);
+    $('subscriptionDate').value=window.getLocalDateString();
     await reloadAnalytics();
     render();toast('Subscription added')
   }catch(e){toast(e.message)}
@@ -1144,7 +1159,7 @@ if ($('payCCForm')) {
 
 
 // CashFlow Lens
-if ($('lensDate')) $('lensDate').value = new Date().toISOString().slice(0,10);
+if ($('lensDate')) $('lensDate').value = window.getLocalDateString();
 
 window.lensState = { commitmentsSelected: true, expectedSelected: true };
 
@@ -1286,6 +1301,7 @@ window.toggleLensShockMethod = function() {
 
 window.resetLens = function() {
     $('lensForm').reset();
+    if ($('lensDate')) $('lensDate').value = window.getLocalDateString();
     $('lensResultSection').style.display = 'none';
         if ($('lensAdvancedTools')) $('lensAdvancedTools').style.display = 'none';
     if ($('lensAdvancedTools')) $('lensAdvancedTools').style.display = 'none';
@@ -1295,6 +1311,8 @@ window.resetLens = function() {
         commitmentsSelected: true,
         expectedSelected: true
     };
+    if ($('tlCommitmentsNode')) $('tlCommitmentsNode').classList.remove('unselected');
+    if ($('tlExpectedNode')) $('tlExpectedNode').classList.remove('unselected');
     
     $('lensBtnAvailableToSpend').disabled = false;
     $('lensAvailableResult').style.display = 'none';
@@ -1562,6 +1580,13 @@ window.updateLensProjectedBalance = function() {
     
     if ($('tlProjectedStatus')) $('tlProjectedStatus').textContent = statusText;
 };
+
+
+
+
+
+
+
 
 
 
