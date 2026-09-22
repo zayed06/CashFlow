@@ -118,9 +118,97 @@ export function simulateCashFlowLens({
         };
     }
 
-    let status = 'projected_positive';
+        let status = 'projected_positive';
     if (projectedBalance < 0) status = 'projected_negative';
     else if (projectedBalance === 0) status = 'projected_zero';
+
+    let availableToSpend = null;
+    let financialShock = null;
+    let paymentComparison = null;
+
+    if (scenario.advancedTool === 'availableToSpend') {
+        const safety = Number(scenario.safetyReserve) || 0;
+        let cmt = scenario.commitmentsSelected === false ? 0 : upcomingImpact;
+        let exp = scenario.expectedSelected === false ? 0 : (historicalSpending.monthlyAverage || 0);
+        let avail = currentBalance - cmt - exp - safety;
+        availableToSpend = Math.max(0, avail);
+    }
+
+    if (scenario.advancedTool === 'financialShock') {
+        const shock = Number(scenario.shockAmount) || 0;
+        const method = scenario.shockPaymentMethod || 'cash';
+        
+        let cmt = scenario.commitmentsSelected === false ? 0 : upcomingImpact;
+        let exp = scenario.expectedSelected === false ? 0 : (historicalSpending.monthlyAverage || 0);
+        
+        if (method === 'cash') {
+            financialShock = {
+                method: 'cash',
+                cashImpact: shock,
+                creditCardImpact: 0,
+                projectedBalance: currentBalance - shock - cmt - exp
+            };
+        } else {
+            financialShock = {
+                method: 'credit_card',
+                cashImpact: 0,
+                projectedBalance: currentBalance - cmt - exp,
+                creditCardImpact: shock
+            };
+            const cardId = scenario.shockCardId;
+            if (cardId) {
+                const card = creditCards.find(c => c._id && c._id.toString() === cardId.toString());
+                if (card) {
+                    let cBal = typeof card.currentBalance === 'number' ? card.currentBalance : 0;
+                    let cLim = typeof card.creditLimit === 'number' ? card.creditLimit : 0;
+                    let projCardBal = cBal + shock;
+                    let projAvail = Math.max(0, cLim - projCardBal);
+                    let projUtil = cLim > 0 ? (projCardBal / cLim) * 100 : 0;
+                    financialShock.cardDetails = {
+                        name: card.name,
+                        projectedCardBalance: projCardBal,
+                        projectedAvailableCredit: projAvail,
+                        projectedUtilization: projUtil
+                    };
+                }
+            }
+        }
+    }
+
+    if (scenario.advancedTool === 'paymentComparison') {
+        const pAmt = Number(scenario.comparisonAmount) || 0;
+        const pCardId = scenario.comparisonCardId;
+        
+        let cmt = scenario.commitmentsSelected === false ? 0 : upcomingImpact;
+        let exp = scenario.expectedSelected === false ? 0 : (historicalSpending.monthlyAverage || 0);
+        
+        paymentComparison = {
+            cash: {
+                cashImpact: pAmt,
+                projectedBalance: currentBalance - pAmt - cmt - exp
+            },
+            creditCard: null
+        };
+        
+        if (pCardId) {
+            const card = creditCards.find(c => c._id && c._id.toString() === pCardId.toString());
+            if (card) {
+                let cBal = typeof card.currentBalance === 'number' ? card.currentBalance : 0;
+                let cLim = typeof card.creditLimit === 'number' ? card.creditLimit : 0;
+                let projCardBal = cBal + pAmt;
+                let projAvail = Math.max(0, cLim - projCardBal);
+                let projUtil = cLim > 0 ? (projCardBal / cLim) * 100 : 0;
+                paymentComparison.creditCard = {
+                    cardId: card._id,
+                    name: card.name,
+                    cashImpact: 0,
+                    projectedCardBalance: projCardBal,
+                    projectedAvailableCredit: projAvail,
+                    projectedUtilization: projUtil
+                };
+            }
+        }
+    }
 
     return {
         currentBalance,
@@ -132,11 +220,9 @@ export function simulateCashFlowLens({
         projectedBalance,
         creditCardImpact,
         outstandingLent,
-        status
+        status,
+        availableToSpend,
+        financialShock,
+        paymentComparison
     };
 }
-
-
-
-
-

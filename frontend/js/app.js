@@ -67,6 +67,7 @@ function render(){
   renderTransactions();renderSubscriptions();renderLoans();renderCategories();renderNotifications();renderCreditCards();
     populateCreditCardDropdowns();
   if(state.analytics) renderAnalytics();
+    if (window.renderLensState) window.renderLensState();
 }
 
 const typeLabels = {
@@ -89,7 +90,13 @@ function populateCreditCardDropdowns() {
   const oldEdit = editCC.value;
   editCC.innerHTML = options;
   if (oldEdit) editCC.value = oldEdit;
-  if ($('lensCreditCard')) { const oldLens = $('lensCreditCard').value; $('lensCreditCard').innerHTML = options; if (oldLens) $('lensCreditCard').value = oldLens; }
+        if ($('lensCreditCard')) {
+    const lensOptions = '<option value="">Select Credit Card</option>' + (state.creditCards || []).map(c => '<option value="' + c._id + '">' + esc(c.name) + ' (\u2022\u2022\u2022\u2022 ' + (c.last4||'xxxx') + ')</option>').join('');
+    
+    const oldLens = $('lensCreditCard').value; $('lensCreditCard').innerHTML = lensOptions; if (oldLens) $('lensCreditCard').value = oldLens;
+    if ($('lensShockCard')) { const oldShock = $('lensShockCard').value; $('lensShockCard').innerHTML = lensOptions; if (oldShock) $('lensShockCard').value = oldShock; }
+    if ($('lensCompareCard')) { const oldCmp = $('lensCompareCard').value; $('lensCompareCard').innerHTML = lensOptions; if (oldCmp) $('lensCompareCard').value = oldCmp; }
+  }
 }
 
 function renderTransactions(){
@@ -1163,6 +1170,7 @@ window.toggleLensNode = function(type) {
         btn.textContent = 'Simulating...';
         $('lensError').style.display = 'none';
         $('lensResultSection').style.display = 'none';
+        if ($('lensAdvancedTools')) $('lensAdvancedTools').style.display = 'none';
         $('lensCcSection').style.display = 'none';
 
         try {
@@ -1185,6 +1193,7 @@ window.toggleLensNode = function(type) {
             lensState.currentBalance = data.currentBalance;
             lensState.baseProjectedBalance = data.projectedBalance;
             lensState.simulatedAmount = data.simulatedAmount;
+            lensState.lastData = data;
             lensState.paymentMethod = data.paymentMethod;
             lensState.upcomingCommitmentsTotal = data.upcomingCommitments ? data.upcomingCommitments.reduce((sum, c) => sum + c.amount, 0) : 0;
             lensState.upcomingCommitmentsEmpty = !data.upcomingCommitments || data.upcomingCommitments.length === 0;
@@ -1253,6 +1262,7 @@ window.toggleLensNode = function(type) {
             }
 
             $('lensResultSection').style.display = 'block';
+            if ($('lensAdvancedTools')) $('lensAdvancedTools').style.display = 'block';
             
         } catch(err) {
             $('lensError').textContent = err.message || 'Network or server error';
@@ -1264,6 +1274,236 @@ window.toggleLensNode = function(type) {
     };
   }
 
+
+window.toggleLensShockMethod = function() {
+    const method = $('lensShockMethod').value;
+    if (method === 'credit_card') {
+        $('lensShockCard').style.display = 'block';
+    } else {
+        $('lensShockCard').style.display = 'none';
+    }
+};
+
+window.resetLens = function() {
+    $('lensForm').reset();
+    $('lensResultSection').style.display = 'none';
+        if ($('lensAdvancedTools')) $('lensAdvancedTools').style.display = 'none';
+    if ($('lensAdvancedTools')) $('lensAdvancedTools').style.display = 'none';
+    $('lensCcSection').style.display = 'none';
+    
+    lensState = {
+        commitmentsSelected: true,
+        expectedSelected: true
+    };
+    
+    $('lensBtnAvailableToSpend').disabled = false;
+    $('lensAvailableResult').style.display = 'none';
+    $('lensSafetyReserve').value = '';
+    
+    $('lensBtnShock').disabled = false;
+    $('lensShockResult').style.display = 'none';
+    $('lensShockAmount').value = '';
+    
+    $('lensBtnCompare').disabled = false;
+    $('lensCompareResult').style.display = 'none';
+    $('lensCompareAmount').value = '';
+};
+
+window.calculateLensAvailableToSpend = async function() {
+    const reserve = Number($('lensSafetyReserve').value);
+    if (isNaN(reserve) || reserve < 0) return toast('Please enter a valid safety reserve');
+    
+    $('lensBtnAvailableToSpend').disabled = true;
+    $('lensBtnAvailableToSpend').textContent = '...';
+    
+    try {
+        const payload = {
+            amount: $('lensAmount').value || 1, // base requirements
+            category: 'Lens',
+            paymentMethod: 'cash',
+            date: $('lensDate').value,
+            advancedTool: 'availableToSpend',
+            safetyReserve: reserve,
+            commitmentsSelected: lensState.commitmentsSelected,
+            expectedSelected: lensState.expectedSelected
+        };
+        const json = await api('lens/simulate', { method: 'POST', body: JSON.stringify(payload) });
+        if (!json.success) throw new Error(json.error);
+        
+        lensState.lastAvailableToSpend = json.data.availableToSpend;
+          $('lensAvailableAmount').textContent = money(json.data.availableToSpend);
+        $('lensAvailableResult').style.display = 'block';
+    } catch(err) {
+        toast(err.message || 'Error calculating Available to Spend');
+    } finally {
+        $('lensBtnAvailableToSpend').disabled = false;
+        $('lensBtnAvailableToSpend').textContent = 'Calculate';
+    }
+};
+
+window.calculateLensShock = async function() {
+    const shockAmt = Number($('lensShockAmount').value);
+    if (isNaN(shockAmt) || shockAmt <= 0) return toast('Please enter a valid shock amount');
+    if ($('lensShockMethod').value === 'credit_card' && !$('lensShockCard').value) return toast('Please add and select a credit card first');
+    
+    $('lensBtnShock').disabled = true;
+    $('lensBtnShock').textContent = '...';
+    
+    try {
+        const payload = {
+            amount: $('lensAmount').value || 1,
+            category: $('lensShockType').value,
+            paymentMethod: 'cash',
+            date: $('lensDate').value,
+            advancedTool: 'financialShock',
+            shockAmount: shockAmt,
+            shockPaymentMethod: $('lensShockMethod').value,
+            shockCardId: $('lensShockMethod').value === 'credit_card' ? $('lensShockCard').value : null,
+            commitmentsSelected: lensState.commitmentsSelected,
+            expectedSelected: lensState.expectedSelected
+        };
+        const json = await api('lens/simulate', { method: 'POST', body: JSON.stringify(payload) });
+        if (!json.success) throw new Error(json.error);
+        
+        const shock = json.data.financialShock;
+          lensState.lastShock = shock;
+        if (shock.method === 'cash') {
+            $('lensShockCashDetails').style.display = 'block';
+            $('lensShockCcDetails').style.display = 'none';
+            $('lensShockImpact').textContent = '-' + money(shock.cashImpact);
+            $('lensShockImpact').style.color = 'var(--danger)';
+            $('lensShockProjBalance').textContent = money(shock.projectedBalance);
+        } else {
+            $('lensShockCashDetails').style.display = 'none';
+            $('lensShockCcDetails').style.display = 'block';
+            $('lensShockCashImpact').textContent = money(shock.cashImpact);
+            $('lensShockCcImpact').textContent = '+' + money(shock.creditCardImpact);
+            $('lensShockCcImpact').style.color = 'var(--primary)';
+            $('lensShockCcProj').textContent = money(shock.cardDetails.projectedCardBalance);
+            $('lensShockCcAvail').textContent = money(shock.cardDetails.projectedAvailableCredit);
+            $('lensShockCcUtil').textContent = shock.cardDetails.projectedUtilization.toFixed(1) + '%';
+        }
+        $('lensShockResult').style.display = 'block';
+    } catch(err) {
+        toast(err.message || 'Error calculating Financial Shock');
+    } finally {
+        $('lensBtnShock').disabled = false;
+        $('lensBtnShock').textContent = 'Calculate';
+    }
+};
+
+window.calculateLensCompare = async function() {
+    const pAmt = Number($('lensCompareAmount').value);
+    if (isNaN(pAmt) || pAmt <= 0) return toast('Please enter a valid purchase amount');
+    if (!$('lensCompareCard').value) return toast('Please add and select a credit card first');
+    
+    $('lensBtnCompare').disabled = true;
+    $('lensBtnCompare').textContent = '...';
+    
+    try {
+        const payload = {
+            amount: $('lensAmount').value || 1,
+            category: 'Compare',
+            paymentMethod: 'cash',
+            date: $('lensDate').value,
+            advancedTool: 'paymentComparison',
+            comparisonAmount: pAmt,
+            comparisonCardId: $('lensCompareCard').value,
+            commitmentsSelected: lensState.commitmentsSelected,
+            expectedSelected: lensState.expectedSelected
+        };
+        const json = await api('lens/simulate', { method: 'POST', body: JSON.stringify(payload) });
+        if (!json.success) throw new Error(json.error);
+        
+                const cmp = json.data.paymentComparison;
+          lensState.lastCompare = cmp;
+        
+        $('lensCmpCashImpact').textContent = '-' + money(cmp.cash.cashImpact);
+        $('lensCmpCashProj').textContent = money(cmp.cash.projectedBalance);
+        
+        $('lensCmpCashZero').textContent = money(0);
+        
+        if (cmp.creditCard) {
+            $('lensCmpCcProj').textContent = money(cmp.creditCard.projectedCardBalance);
+            $('lensCmpCcAvail').textContent = money(cmp.creditCard.projectedAvailableCredit);
+            $('lensCmpCcUtil').textContent = cmp.creditCard.projectedUtilization.toFixed(1) + '%';
+        }
+        
+        $('lensCompareResult').style.display = 'block';
+    } catch(err) {
+        toast(err.message || 'Error calculating Comparison');
+    } finally {
+        $('lensBtnCompare').disabled = false;
+        $('lensBtnCompare').textContent = 'Calculate';
+    }
+};
+
+window.renderLensState = function() {
+    if (!$('lensResultSection') || $('lensResultSection').style.display === 'none') return;
+    if (!lensState) return;
+    const data = lensState.lastData;
+    if (!data) return;
+
+    $('tlCurrentBalance').textContent = money(data.currentBalance);
+
+    if (data.paymentMethod === 'cash') {
+        $('tlDecisionImpact').textContent = '-' + money(data.simulatedAmount);
+    } else {
+        $('tlDecisionImpact').innerHTML = '<div style="font-size: 13px; color: var(--muted); font-weight: normal; margin-bottom: 2px;">Cash impact: ' + money(0) + '</div><div style="color: var(--primary);">Credit card impact: +' + money(data.simulatedAmount) + '</div>';
+    }
+
+    if (!lensState.upcomingCommitmentsEmpty && data.upcomingCommitments) {
+        let html = '';
+        data.upcomingCommitments.forEach(c => {
+            let dateStr = '';
+            if (c.date) {
+                const d = new Date(c.date + 'T12:00:00');
+                const day = d.getDate();
+                const month = d.toLocaleString('en-US', { month: 'short' });
+                dateStr = ' &middot; ' + day + ' ' + month;
+            }
+            html += '<div style="display: flex; justify-content: space-between; margin-bottom: 2px;"><span>' + esc(c.name) + '</span><span>' + money(c.amount) + dateStr + '</span></div>';
+        });
+        html += '<div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); font-weight: bold;"><span>Total</span><span>' + money(lensState.upcomingCommitmentsTotal) + '</span></div>';
+        $('tlCommitmentsDetails').innerHTML = html;
+    }
+
+    if (data.paymentMethod === 'credit_card' && data.creditCardImpact) {
+        $('lensCcCurrent').textContent = money(data.creditCardImpact.projectedCardBalance - data.simulatedAmount);
+        $('lensCcProjected').textContent = money(data.creditCardImpact.projectedCardBalance);
+        $('lensCcAvail').textContent = money(data.creditCardImpact.projectedAvailableCredit);
+    }
+
+    if (window.updateLensProjectedBalance) window.updateLensProjectedBalance();
+
+    if (lensState.lastAvailableToSpend !== undefined) {
+        $('lensAvailableAmount').textContent = money(lensState.lastAvailableToSpend);
+    }
+
+    if (lensState.lastShock) {
+        const shock = lensState.lastShock;
+        if (shock.method === 'cash') {
+            $('lensShockImpact').textContent = '-' + money(shock.cashImpact);
+            $('lensShockProjBalance').textContent = money(shock.projectedBalance);
+        } else {
+            $('lensShockCashImpact').textContent = money(shock.cashImpact);
+            $('lensShockCcImpact').textContent = '+' + money(shock.creditCardImpact);
+            $('lensShockCcProj').textContent = money(shock.cardDetails.projectedCardBalance);
+            $('lensShockCcAvail').textContent = money(shock.cardDetails.projectedAvailableCredit);
+        }
+    }
+
+    if (lensState.lastCompare) {
+        const cmp = lensState.lastCompare;
+        $('lensCmpCashImpact').textContent = '-' + money(cmp.cash.cashImpact);
+        $('lensCmpCashProj').textContent = money(cmp.cash.projectedBalance);
+        $('lensCmpCashZero').textContent = money(0);
+        if (cmp.creditCard) {
+            $('lensCmpCcProj').textContent = money(cmp.creditCard.projectedCardBalance);
+            $('lensCmpCcAvail').textContent = money(cmp.creditCard.projectedAvailableCredit);
+        }
+    }
+};
 
 window.updateLensProjectedBalance = function() {
     if (!lensState) return;
@@ -1322,6 +1562,21 @@ window.updateLensProjectedBalance = function() {
     
     if ($('tlProjectedStatus')) $('tlProjectedStatus').textContent = statusText;
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

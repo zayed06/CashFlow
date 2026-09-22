@@ -354,6 +354,85 @@
           </div>
         </div>
       </div>
+          <div id="lensAdvancedTools" style="display: none; margin-top: 30px;">
+            <hr style="margin: 20px 0; border: none; border-top: 1px solid var(--border);">
+            <div class="section-heading">Advanced Lens Tools</div>
+            
+            <div class="card" style="margin-bottom: 20px;">
+              <div class="card-title">Available to Spend</div>
+              <div style="font-size: 13px; color: var(--muted); margin-bottom: 12px;">Projected available amount after upcoming commitments, recent spending estimate, and your safety reserve.</div>
+              <div class="form-grid">
+                  <input id="lensSafetyReserve" type="number" min="0" step="0.01" placeholder="Safety Reserve (e.g. 2000)">
+                  <button class="primary-button" id="lensBtnAvailableToSpend" onclick="window.calculateLensAvailableToSpend()">Calculate</button>
+              </div>
+              <div id="lensAvailableResult" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border);">
+                  <div class="lens-row" style="border: none; padding: 0;">
+                      <span class="muted" style="margin:0;">Available to Spend</span>
+                      <strong id="lensAvailableAmount" style="font-size: 18px; color: var(--primary);"></strong>
+                  </div>
+              </div>
+            </div>
+            
+            <div class="card" style="margin-bottom: 20px;">
+              <div class="card-title">Financial Shock</div>
+              <div class="form-grid">
+                  <select id="lensShockType" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+                      <option value="Emergency">Emergency</option>
+                      <option value="Medical">Medical</option>
+                      <option value="Repair">Repair</option>
+                      <option value="Travel">Travel</option>
+                      <option value="Custom">Custom</option>
+                  </select>
+                  <input id="lensShockAmount" type="number" min="0" step="0.01" placeholder="Amount (e.g. 3000)">
+                  <select id="lensShockMethod" onchange="window.toggleLensShockMethod()" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+                      <option value="cash">Cash</option>
+                      <option value="credit_card">Credit Card</option>
+                  </select>
+                  <select id="lensShockCard" style="display: none; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+                  </select>
+                  <button class="primary-button" id="lensBtnShock" onclick="window.calculateLensShock()" style="grid-column: 1 / -1;">Calculate</button>
+              </div>
+              <div id="lensShockResult" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border);">
+                  <div id="lensShockCashDetails">
+                      <div class="lens-row"><span class="muted" style="margin:0;">Financial Shock</span><strong id="lensShockImpact"></strong></div>
+                      <div class="lens-row"><span class="muted" style="margin:0;">Projected Balance</span><strong id="lensShockProjBalance"></strong></div>
+                  </div>
+                  <div id="lensShockCcDetails" style="display: none;">
+                      <div class="lens-row"><span class="muted" style="margin:0;">Cash Impact</span><strong id="lensShockCashImpact"></strong></div>
+                      <div class="lens-row"><span class="muted" style="margin:0;">Credit Card Impact</span><strong id="lensShockCcImpact"></strong></div>
+                      <div class="lens-row"><span class="muted" style="margin:0;">Projected Card Balance</span><strong id="lensShockCcProj"></strong></div>
+                      <div class="lens-row"><span class="muted" style="margin:0;">Available Credit</span><strong id="lensShockCcAvail"></strong></div>
+                      <div class="lens-row"><span class="muted" style="margin:0;">Utilization</span><strong id="lensShockCcUtil"></strong></div>
+                  </div>
+              </div>
+            </div>
+            
+            <div class="card" style="margin-bottom: 20px;">
+              <div class="card-title">Compare Payment Methods</div>
+              <div class="form-grid">
+                  <input id="lensCompareAmount" type="number" min="0" step="0.01" placeholder="Purchase Amount (e.g. 5000)">
+                  <select id="lensCompareCard" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+                  </select>
+                  <button class="primary-button" id="lensBtnCompare" onclick="window.calculateLensCompare()" style="grid-column: 1 / -1;">Calculate</button>
+              </div>
+              <div id="lensCompareResult" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border);">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                      <div>
+                          <div style="font-weight: bold; margin-bottom: 8px;">Cash</div>
+                          <div class="lens-row" style="padding: 4px 0;"><span class="muted" style="margin:0;">Cash Impact</span><strong id="lensCmpCashImpact" style="color: var(--danger);"></strong></div>
+                          <div class="lens-row" style="padding: 4px 0;"><span class="muted" style="margin:0;">Projected Balance</span><strong id="lensCmpCashProj"></strong></div>
+                      </div>
+                      <div>
+                          <div style="font-weight: bold; margin-bottom: 8px;">Credit Card</div>
+                          <div class="lens-row" style="padding: 4px 0;"><span class="muted" style="margin:0;">Cash Impact</span><strong id="lensCmpCashZero"></strong></div>
+                          <div class="lens-row" style="padding: 4px 0;"><span class="muted" style="margin:0;">Projected Card Balance</span><strong id="lensCmpCcProj"></strong></div>
+                          <div class="lens-row" style="padding: 4px 0;"><span class="muted" style="margin:0;">Available Credit</span><strong id="lensCmpCcAvail"></strong></div>
+                          <div class="lens-row" style="padding: 4px 0;"><span class="muted" style="margin:0;">Projected Utilization</span><strong id="lensCmpCcUtil"></strong></div>
+                      </div>
+                  </div>
+              </div>
+            </div>
+          </div>
     </section>
 
 <section id="subscriptions" class="tab-panel container">
@@ -551,5 +630,11 @@
   <script src="/js/app.js"></script>
 </body>
 </html>
+
+
+
+
+
+
 
 
