@@ -27,7 +27,7 @@ $('logoutButton').onclick=async()=>{
   try{await fetch('/api/auth/logout',{method:'POST'});}finally{location.href='/login';}
 };
 
-const filterParams = { search: '', category: '', type: '', dateFrom: '', dateTo: '', sort: 'newest', page: 1, limit: 10 };
+const filterParams = { search: '', category: '', type: '', dateFrom: '', dateTo: '', sort: 'newest', page: 1, limit: 8 };
 let totalTransactions = 0;
 
 async function fetchTransactions() {
@@ -89,6 +89,7 @@ function populateCreditCardDropdowns() {
   const oldEdit = editCC.value;
   editCC.innerHTML = options;
   if (oldEdit) editCC.value = oldEdit;
+  if ($('lensCreditCard')) { const oldLens = $('lensCreditCard').value; $('lensCreditCard').innerHTML = options; if (oldLens) $('lensCreditCard').value = oldLens; }
 }
 
 function renderTransactions(){
@@ -137,6 +138,7 @@ function renderLoans(){
 function renderCategories(){
   const options = `<option value="">Select Category</option>` + state.categories.map(c=>`<option value="${c._id}">${esc(c.name)}</option>`).join('');
   $('expenseCategory').innerHTML = options;
+  if ($('lensCategory')) $('lensCategory').innerHTML = options;
   if ($('filterCategory')) {
     $('filterCategory').innerHTML = `<option value="">All Categories</option>` + state.categories.map(c=>`<option value="${c._id}">${esc(c.name)}</option>`).join('');
     $('filterCategory').value = filterParams.category;
@@ -1132,4 +1134,200 @@ if ($('payCCForm')) {
     }
   };
 }
+
+
+// CashFlow Lens
+if ($('lensDate')) $('lensDate').value = new Date().toISOString().slice(0,10);
+
+window.lensState = { commitmentsSelected: true, expectedSelected: true };
+
+window.toggleLensNode = function(type) {
+    if (type === 'commitments') {
+        lensState.commitmentsSelected = !lensState.commitmentsSelected;
+        if (lensState.commitmentsSelected) $('tlCommitmentsNode').classList.remove('unselected');
+        else $('tlCommitmentsNode').classList.add('unselected');
+    } else if (type === 'expected') {
+        lensState.expectedSelected = !lensState.expectedSelected;
+        if (lensState.expectedSelected) $('tlExpectedNode').classList.remove('unselected');
+        else $('tlExpectedNode').classList.add('unselected');
+    }
+    window.updateLensProjectedBalance();
+};
+
+
+  if ($('lensForm')) {
+    $('lensForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = $('lensSimulateBtn');
+        btn.disabled = true;
+        btn.textContent = 'Simulating...';
+        $('lensError').style.display = 'none';
+        $('lensResultSection').style.display = 'none';
+        $('lensCcSection').style.display = 'none';
+
+        try {
+            const payload = {
+                amount: $('lensAmount').value,
+                category: $('lensCategory').options[$('lensCategory').selectedIndex].text,
+                paymentMethod: $('lensPaymentMethod').value,
+                creditCardId: $('lensPaymentMethod').value === 'credit_card' ? $('lensCreditCard').value : null,
+                date: $('lensDate').value
+            };
+
+            const json = await api('lens/simulate', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+
+            if (!json.success) throw new Error(json.error || 'Simulation failed');
+
+            const data = json.data;
+            lensState.currentBalance = data.currentBalance;
+            lensState.baseProjectedBalance = data.projectedBalance;
+            lensState.simulatedAmount = data.simulatedAmount;
+            lensState.paymentMethod = data.paymentMethod;
+            lensState.upcomingCommitmentsTotal = data.upcomingCommitments ? data.upcomingCommitments.reduce((sum, c) => sum + c.amount, 0) : 0;
+            lensState.upcomingCommitmentsEmpty = !data.upcomingCommitments || data.upcomingCommitments.length === 0;
+            lensState.historicalAverage = (data.historicalSpending && data.historicalSpending.monthlyAverage !== undefined) ? data.historicalSpending.monthlyAverage : 0;
+            lensState.historicalEmpty = !data.historicalSpending || data.historicalSpending.monthlyAverage === undefined;
+
+            $('tlCurrentBalance').textContent = money(data.currentBalance);
+            
+            // Decision
+            let decisionDetails = payload.category + ' &bull; ' + (data.paymentMethod === 'cash' ? 'Cash' : 'Credit Card');
+            $('tlDecisionDetails').innerHTML = decisionDetails;
+            
+            if (data.paymentMethod === 'cash') {
+                $('tlDecisionImpact').textContent = '-' + money(data.simulatedAmount);
+                $('tlDecisionImpact').style.color = 'var(--danger)';
+            } else {
+                $('tlDecisionImpact').innerHTML = '<div style="font-size: 13px; color: var(--muted); font-weight: normal; margin-bottom: 2px;">Cash impact: ' + money(0) + '</div><div style="color: var(--primary);">Credit card impact: +' + money(data.simulatedAmount) + '</div>';
+                $('tlDecisionImpact').style.color = '';
+            }
+
+            if (lensState.upcomingCommitmentsEmpty) {
+                $('tlCommitmentsDetails').textContent = 'No upcoming commitments';
+            } else {
+                let html = '';
+                data.upcomingCommitments.forEach(c => {
+                    let dateStr = '';
+                    if (c.date) {
+                        const d = new Date(c.date + 'T12:00:00');
+                        const day = d.getDate();
+                        const month = d.toLocaleString('en-US', { month: 'short' });
+                        dateStr = ' &middot; ' + day + ' ' + month;
+                    }
+                    html += '<div style="display: flex; justify-content: space-between; margin-bottom: 2px;"><span>' + c.name + '</span><span>' + money(c.amount) + dateStr + '</span></div>';
+                });
+                html += '<div style="display: flex; justify-content: space-between; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); font-weight: bold;"><span>Total</span><span>' + money(lensState.upcomingCommitmentsTotal) + '</span></div>';
+                $('tlCommitmentsDetails').innerHTML = html;
+            }
+
+            if (lensState.historicalEmpty) {
+                $('tlExpectedNode').classList.remove('selectable');
+                $('tlExpectedNode').onclick = null;
+            } else {
+                $('tlExpectedNode').classList.add('selectable');
+                $('tlExpectedNode').onclick = function() { window.toggleLensNode('expected') };
+            }
+
+            if (lensState.upcomingCommitmentsEmpty) {
+                $('tlCommitmentsNode').classList.remove('selectable');
+                $('tlCommitmentsNode').onclick = null;
+            } else {
+                $('tlCommitmentsNode').classList.add('selectable');
+                $('tlCommitmentsNode').onclick = function() { window.toggleLensNode('commitments') };
+            }
+
+            window.updateLensProjectedBalance();
+
+            // Credit Card Section
+            if (data.paymentMethod === 'credit_card' && data.creditCardImpact) {
+                $('lensCcSection').style.display = 'block';
+                $('lensCcCurrent').textContent = money(data.creditCardImpact.projectedCardBalance - data.simulatedAmount);
+                $('lensCcProjected').textContent = money(data.creditCardImpact.projectedCardBalance);
+                $('lensCcAvail').textContent = money(data.creditCardImpact.projectedAvailableCredit);
+                $('lensCcUtil').textContent = (data.creditCardImpact.projectedUtilization || 0).toFixed(1) + '%';
+            } else {
+                $('lensCcSection').style.display = 'none';
+            }
+
+            $('lensResultSection').style.display = 'block';
+            
+        } catch(err) {
+            $('lensError').textContent = err.message || 'Network or server error';
+            $('lensError').style.display = 'block';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Simulate Decision';
+        }
+    };
+  }
+
+
+window.updateLensProjectedBalance = function() {
+    if (!lensState) return;
+    
+    let pBalance = lensState.baseProjectedBalance;
+    
+    // Add back the values if they are deselected
+    if (!lensState.commitmentsSelected) {
+        pBalance += (lensState.upcomingCommitmentsTotal || 0);
+    }
+    if (!lensState.expectedSelected) {
+        pBalance += (lensState.historicalAverage || 0);
+    }
+    
+    // Commitments
+    if (lensState.commitmentsSelected) {
+        if (lensState.upcomingCommitmentsEmpty) {
+            $('tlCommitmentsImpact').textContent = money(0);
+            $('tlCommitmentsImpact').style.color = 'var(--muted)';
+        } else {
+            $('tlCommitmentsImpact').innerHTML = '-' + money(lensState.upcomingCommitmentsTotal) + '<div style="font-size: 12px; font-weight: normal; color: var(--text); margin-top: 4px;">Included in simulation</div>';
+            $('tlCommitmentsImpact').style.color = 'var(--danger)';
+        }
+    } else {
+        if (lensState.upcomingCommitmentsEmpty) {
+            $('tlCommitmentsImpact').innerHTML = money(0) + '<div style="font-size: 12px; font-weight: normal; margin-top: 4px;">Excluded from simulation</div>';
+            $('tlCommitmentsImpact').style.color = 'var(--muted)';
+        } else {
+            $('tlCommitmentsImpact').innerHTML = money(lensState.upcomingCommitmentsTotal) + '<div style="font-size: 12px; font-weight: normal; color: var(--muted); margin-top: 4px;">Excluded from simulation</div>';
+            $('tlCommitmentsImpact').style.color = 'var(--text)';
+        }
+    }
+
+    // Expected Spending
+    if (!lensState.historicalEmpty) {
+        if (lensState.expectedSelected) {
+            $('tlExpectedDetails').textContent = 'Historical spending estimate';
+            $('tlExpectedImpact').innerHTML = '-' + money(lensState.historicalAverage) + ' / month<div style="font-size: 12px; font-weight: normal; color: var(--text); margin-top: 4px;">Included in simulation</div>';
+            $('tlExpectedImpact').style.color = 'var(--danger)';
+        } else {
+            $('tlExpectedDetails').textContent = 'Historical spending estimate';
+            $('tlExpectedImpact').innerHTML = money(lensState.historicalAverage) + ' / month<div style="font-size: 12px; font-weight: normal; color: var(--muted); margin-top: 4px;">Reference only</div>';
+            $('tlExpectedImpact').style.color = 'var(--text)';
+        }
+    } else {
+        $('tlExpectedDetails').textContent = 'Historical spending data unavailable';
+        $('tlExpectedImpact').textContent = '';
+    }
+
+    // Projected Balance
+    $('tlProjectedBalance').textContent = money(pBalance);
+    
+    let statusText = 'Projected positive';
+    if (pBalance < 0) statusText = 'Projected negative';
+    else if (pBalance === 0) statusText = 'Projected zero';
+    
+    if ($('tlProjectedStatus')) $('tlProjectedStatus').textContent = statusText;
+};
+
+
+
+
+
+
+
+
 

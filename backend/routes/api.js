@@ -10,6 +10,7 @@ import CreditCard from '../models/CreditCard.js';
 import { getCurrentUser } from '../auth.js';
 import { handleAuth, send } from './auth.js';
 import { enrichCreditCard } from '../utils/creditCardUtils.js';
+import { simulateCashFlowLens } from '../utils/lensEngine.js';
 
 const models = { subscriptions: Subscription, loans: Loan, transactions: Transaction, categories: Category, budgets: Budget, notifications: Notification, 'credit-cards': CreditCard };
 
@@ -176,6 +177,42 @@ export async function handleApi(request, response) {
 
   const resource = parts[1];
   const id = parts[2];
+
+  if (resource === 'lens' && id === 'simulate') {
+    if (request.method !== 'POST') return send(response, 405, { message: 'Method not allowed' });
+    try {
+      const body = await readJson(request);
+      
+      const transactions = await Transaction.find({ userId: user._id });
+      const subscriptions = await Subscription.find({ userId: user._id });
+      const loans = await Loan.find({ userId: user._id });
+      const creditCards = await CreditCard.find({ userId: user._id });
+      
+      if (body.paymentMethod === 'credit_card' && body.creditCardId) {
+          const cardExists = creditCards.find(c => c._id.toString() === body.creditCardId.toString());
+          if (!cardExists) {
+              return send(response, 400, { success: false, error: 'Selected credit card not found or unauthorized' });
+          }
+      }
+
+      const result = simulateCashFlowLens({
+          transactions,
+          subscriptions,
+          loans,
+          creditCards,
+          scenario: body
+      });
+
+      if (result.error) {
+          return send(response, 400, { success: false, error: result.error });
+      }
+
+      return send(response, 200, { success: true, data: result });
+    } catch (e) {
+      console.error(e);
+      return send(response, 500, { success: false, error: 'Internal server error during simulation' });
+    }
+  }
 
   if (resource === 'ai' && id === 'chat') {
     if (request.method !== 'POST') return send(response, 405, { message: 'Method not allowed' });

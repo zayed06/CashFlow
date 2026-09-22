@@ -18,6 +18,7 @@
       <nav class="sidebar-nav">
         <button class="sidebar-tab tab active" data-tab="analytics">📊 <span>Dashboard</span></button>
         <button class="sidebar-tab tab" data-tab="transactions">▣ <span>Transactions</span></button>
+        <button class="sidebar-tab tab" data-tab="lens">&#128269; <span>CashFlow Lens</span></button>
         <button class="sidebar-tab tab" data-tab="subscriptions">↻ <span>Subscriptions</span></button>
           <button class="sidebar-tab tab" data-tab="creditcards">💳 <span>Credit Cards</span></button>
         <button class="sidebar-tab tab" data-tab="loans">♧ <span>Lent</span></button>
@@ -153,6 +154,24 @@
 
 
     <section id="transactions" class="tab-panel container">
+<style>
+    #transactions.container {
+      max-width: 1400px;
+    }
+    .transactions-layout {
+      display: grid;
+      grid-template-columns: minmax(380px, 0.4fr) minmax(0, 1fr);
+      gap: 2rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .transactions-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+<div class="transactions-layout">
+  <div class="transactions-left">
       <div class="card"><div class="card-title">Log a transaction</div>
         <form id="expenseForm" class="form-grid">
           <select id="expenseType" required style="grid-column: 1 / -1; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
@@ -218,8 +237,9 @@
           </div>
         </form>
       </div>
-
-      <div class="section-heading" style="display: flex; justify-content: space-between; align-items: center;">
+      </div>
+  <div class="transactions-right">
+    <div class="section-heading" style="display: flex; justify-content: space-between; align-items: center;">
         <span>Transactions</span>
         <div id="paginationControls" style="font-size: 13px; display: flex; align-items: center; gap: 10px;">
            <button class="delete" style="padding: 4px 8px; border: 1px solid var(--border);" onclick="prevPage()">Prev</button>
@@ -228,9 +248,115 @@
         </div>
       </div>
       <div id="transactionList"></div>
+    </div></div></section>
+
+        <section id="lens" class="tab-panel container">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h2 style="margin-bottom: 5px; font-size: 24px; font-weight: 750;">CashFlow Lens</h2>
+        <p class="muted">See how a financial decision could affect your future cash position before you make it.</p>
+      </div>
+
+      <style>
+        .lens-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+        @media (max-width: 900px) { .lens-layout { grid-template-columns: 1fr; } }
+        .lens-result-card { background: var(--primary-soft); border: 1px solid var(--primary); padding: 20px; border-radius: 15px; }
+        .lens-result-value { font-size: 28px; font-weight: 750; margin: 10px 0; color: var(--primary); }
+        .lens-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+        .lens-row:last-child { border-bottom: none; }
+      </style>
+
+      <div class="lens-layout">
+        <div class="card">
+          <div class="card-title">BEFORE I BUY</div>
+          <form id="lensForm" class="form-grid">
+            <input id="lensAmount" type="number" min="0" step="0.01" placeholder="Amount" required style="grid-column: 1 / -1;">
+            
+            <select id="lensCategory" required style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+              <option value="">Select Category</option>
+            </select>
+            
+            <select id="lensPaymentMethod" style="padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);" onchange="document.getElementById('lensCreditCard').style.display = this.value === 'credit_card' ? 'block' : 'none'; document.getElementById('lensCreditCard').required = this.value === 'credit_card';">
+              <option value="cash">Cash</option>
+              <option value="credit_card">Credit Card</option>
+            </select>
+            
+            <select id="lensCreditCard" style="display: none; grid-column: 1 / -1; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+              <option value="">Select Credit Card</option>
+            </select>
+            
+            <input id="lensDate" type="date" required style="grid-column: 1 / -1;">
+            
+            <div style="grid-column: 1 / -1; display: flex; gap: 10px; margin-top: 10px;">
+              <button id="lensSimulateBtn" type="submit" class="primary-button" style="flex: 1;">Simulate Decision</button>
+              <button type="button" class="secondary-button" onclick="resetLens()">Reset</button>
+            </div>
+          </form>
+          <div id="lensError" class="notice" style="display: none; color: var(--danger); border-color: var(--danger);"></div>
+        </div>
+
+        <style>
+          .lens-timeline { position: relative; padding-left: 30px; margin-top: 10px; }
+          .lens-timeline::before { content: ''; position: absolute; left: 7px; top: 10px; bottom: 10px; width: 2px; background: var(--border); }
+          .lens-node { position: relative; margin-bottom: 25px; padding: 15px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); transition: background 0.2s; }
+          .lens-node.selectable { cursor: pointer; }
+          .lens-node.selectable:hover { background: var(--card); }
+          .lens-node:last-child { margin-bottom: 0; }
+          .lens-node::before { content: ''; position: absolute; left: -28px; top: 16px; width: 12px; height: 12px; border-radius: 50%; background: var(--primary); border: 2px solid var(--primary); z-index: 1; transition: background 0.2s; }
+          .lens-node.unselected::before { background: var(--card); }
+          .lens-node-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
+          .lens-node-content { font-size: 13px; color: var(--muted); }
+          .lens-node-amount { font-size: 16px; font-weight: 700; color: var(--text); margin-top: 8px; }
+          .lens-node.final { background: var(--primary-soft); border-color: var(--primary); }
+          .lens-node.final .lens-node-amount { font-size: 22px; color: var(--primary); }
+        </style>
+
+        <div id="lensResultSection" style="display: none;">
+          <div class="card" style="margin-bottom: 20px;">
+            <div class="card-title">Projected Timeline</div>
+            <div class="lens-timeline">
+                <div class="lens-node">
+                    <div class="lens-node-title">Current Balance</div>
+                    <div class="lens-node-amount" id="tlCurrentBalance"></div>
+                </div>
+
+                <div class="lens-node">
+                    <div class="lens-node-title">Your Decision</div>
+                    <div class="lens-node-content" id="tlDecisionDetails"></div>
+                    <div class="lens-node-amount" id="tlDecisionImpact"></div>
+                </div>
+
+                <div id="tlCommitmentsNode" class="lens-node selectable" onclick="toggleLensNode('commitments')">
+                    <div class="lens-node-title">Upcoming Commitments</div>
+                    <div class="lens-node-content" id="tlCommitmentsDetails"></div>
+                    <div class="lens-node-amount" id="tlCommitmentsImpact"></div>
+                </div>
+
+                <div id="tlExpectedNode" class="lens-node selectable" onclick="toggleLensNode('expected')">
+                    <div class="lens-node-title">Recent Spending</div>
+                    <div class="lens-node-content" id="tlExpectedDetails"></div>
+                    <div class="lens-node-amount" id="tlExpectedImpact"></div>
+                </div>
+
+                <div class="lens-node final">
+                    <div class="lens-node-title">Projected Balance</div>
+                    <div class="lens-node-amount" id="tlProjectedBalance"></div>
+                    <div id="tlProjectedStatus" class="status" style="margin-top: 10px; display: inline-block; background: var(--card); border: 1px solid var(--primary);"></div>
+                </div>
+            </div>
+          </div>
+
+          <div id="lensCcSection" class="card" style="display: none;">
+            <div class="card-title">Credit Card Impact</div>
+            <div class="lens-row"><span class="muted" style="margin:0;">Current Card Balance</span><strong id="lensCcCurrent"></strong></div>
+            <div class="lens-row"><span class="muted" style="margin:0;">Projected Card Balance</span><strong id="lensCcProjected"></strong></div>
+            <div class="lens-row"><span class="muted" style="margin:0;">Available Credit</span><strong id="lensCcAvail"></strong></div>
+            <div class="lens-row"><span class="muted" style="margin:0;">Projected Utilization</span><strong id="lensCcUtil"></strong></div>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section id="subscriptions" class="tab-panel container">
+<section id="subscriptions" class="tab-panel container">
       <div class="card"><div class="card-title">Add a subscription</div>
         <form id="subscriptionForm" class="form-grid">
           <input id="subscriptionName" placeholder="Subscription name" required>
@@ -425,3 +551,5 @@
   <script src="/js/app.js"></script>
 </body>
 </html>
+
+
