@@ -193,11 +193,63 @@ export async function handleApi(request, response) {
       let totalInflows = 0;
       let totalOutflows = 0;
       txs.forEach(t => {
-         if (['income', 'add_money', 'loan_repayment'].includes(t.type)) { balance += t.amount; totalInflows += t.amount; }
-         if (['expense', 'deduct_money', 'loan_given', 'subscription'].includes(t.type)) { balance -= t.amount; totalOutflows += t.amount; }
+         if (['income', 'add_money', 'loan_repayment'].includes(t.type)) { 
+            balance += t.amount; 
+            totalInflows += t.amount; 
+         }
+         if (['deduct_money', 'loan_given', 'subscription'].includes(t.type)) { 
+            balance -= t.amount; 
+            totalOutflows += t.amount; 
+         }
+         if (t.type === 'credit_card_payment') {
+            balance -= t.amount;
+         }
+         if (t.type === 'expense') {
+            totalOutflows += t.amount;
+            if (!t.creditCardId) {
+               balance -= t.amount;
+            }
+         }
       });
 
-      const simplifiedTxs = txs.map(t => ({ date: t.date, type: t.type, amount: t.amount, desc: t.description, cat: t.categoryId ? cats.find(c => c._id.equals(t.categoryId))?.name : null }));
+      const creditCardsRaw = await CreditCard.find({ userId: user._id });
+      const creditCards = creditCardsRaw.map(c => enrichCreditCard(c));
+      let totalCreditLimit = 0;
+      let totalOutstanding = 0;
+      const simplifiedCCs = creditCards.map(c => {
+          const limit = Number(c.creditLimit) || 0;
+          const current = Number(c.currentBalance) || 0;
+          totalCreditLimit += limit;
+          totalOutstanding += current;
+          return {
+              name: c.name,
+              issuer: c.issuer,
+              last4: c.last4,
+              limit,
+              outstanding: current,
+              available: Math.max(0, limit - current),
+              statementBalance: c.statementBalance,
+              minimumPayment: c.minimumPayment,
+              statementStatus: c.statementStatus,
+              paymentStatus: c.paymentStatus,
+              dueDate: c.dueDate,
+              nextDueDate: c.nextDueDate ? new Date(c.nextDueDate).toLocaleDateString() : null,
+              daysUntilStatement: c.daysUntilStatement,
+              daysUntilDue: c.daysUntilDue
+          };
+      });
+      const totalAvailableCredit = Math.max(0, totalCreditLimit - totalOutstanding);
+      const overallUtilization = totalCreditLimit > 0 ? ((totalOutstanding / totalCreditLimit) * 100).toFixed(2) + '%' : '0%';
+      
+
+      const simplifiedTxs = txs.map(t => ({ 
+          date: t.date, 
+          type: t.type, 
+          amount: t.amount, 
+          desc: t.description, 
+          cat: t.categoryId ? cats.find(c => c._id.equals(t.categoryId))?.name : null,
+          paymentMethod: t.creditCardId ? (creditCardsRaw.find(c => c._id.toString() === t.creditCardId.toString())?.name || 'Credit Card') : 'Cash'
+      }));
       const simplifiedSubs = subs.map(s => ({ name: s.name, amt: s.amount, freq: s.frequency, next: s.date, active: s.active, processed: s.processed }));
       const simplifiedLoans = loans.map(l => ({ name: l.personName, amt: l.amount, repaid: l.repaidAmount }));
       const simplifiedBudgets = budgets.map(b => ({ month: b.month, amount: b.amount }));
@@ -269,6 +321,27 @@ export async function handleApi(request, response) {
             const currency = user.currency || 'INR';
       const symMap = { INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ', CAD: 'CA$', AUD: 'A$', JPY: '¥', CHF: 'CHF' };
       const sym = symMap[currency] || '₹';
+
+      let creditCardSummaryMarkdown = `CREDIT CARD SUMMARY
+Total Credit Cards: ${simplifiedCCs.length}
+Total Credit Limit: ${sym}${totalCreditLimit}
+Total Outstanding: ${sym}${totalOutstanding}
+Total Available Credit: ${sym}${totalAvailableCredit}
+Overall Utilization: ${overallUtilization}
+
+Cards:\n`;
+      simplifiedCCs.forEach((c, i) => {
+          creditCardSummaryMarkdown += `${i + 1}. ${c.name}
+   Issuer: ${c.issuer || 'N/A'}
+   Last 4: ${c.last4 || 'N/A'}
+   Credit Limit: ${sym}${c.limit}
+   Outstanding: ${sym}${c.outstanding}
+   Available: ${sym}${c.available}
+   Statement Balance: ${sym}${c.statementBalance}
+   Minimum Payment: ${sym}${c.minimumPayment}
+   Payment Status: ${c.paymentStatus}
+   Next Due Date: ${c.nextDueDate || 'N/A'}\n\n`;
+      });
       const systemInstruction = `You are CashFlow AI, a read-only financial assistant. Answer the user's questions clearly based ONLY on this JSON data representing their finances. Use ${sym} for amounts. Distinguish past (processed) from future (scheduled). Be concise and do not invent transactions.
 IMPORTANT FORMATTING RULES:
 - Do NOT use LaTeX.
@@ -277,15 +350,28 @@ IMPORTANT FORMATTING RULES:
 - Write calculations as normal plain text (e.g. Current Balance = ${sym}11,200 - ${sym}3,120 = ${sym}8,080).
 - Continue using normal Markdown for headings, bold text, and bullet lists.
 
-Data:
-Current Balance: ${sym}${balance}
-Total Inflows: ${sym}${totalInflows}
-Total Outflows: ${sym}${totalOutflows}
-Budgets: ${JSON.stringify(simplifiedBudgets)}
-Loans: ${JSON.stringify(simplifiedLoans)}
-Subscriptions: ${JSON.stringify(simplifiedSubs)}
+  Data:
+  Current Cash Balance: ${sym}${balance}
+  Total Inflows: ${sym}${totalInflows}
+  Total Outflows: ${sym}${totalOutflows}
+  Budgets: ${JSON.stringify(simplifiedBudgets)}
+  Loans: ${JSON.stringify(simplifiedLoans)}
+  Subscriptions: ${JSON.stringify(simplifiedSubs)}
 
-Category Spending Totals (Already Calculated):
+  CRITICAL CREDIT CARD RULES FOR AI:
+  1. Credit-card purchases (type: 'expense' with paymentMethod: 'Credit Card') are expenses.
+  2. Credit-card payments (type: 'credit_card_payment') are payments to reduce debt, not expenses.
+  3. 'Current Cash Balance' is liquid cash. Do NOT add available credit to cash.
+  4. 'outstanding' is credit-card debt.
+  5. 'available' is credit limit minus outstanding.
+  6. 'overallUtilization' is outstanding divided by limit.
+  7. Use the exact paymentStatus from the backend data. Do not invent missing information.
+  8. If asked how much debt the user has, refer to totalOutstanding. If asked how much they can spend on cards, refer to totalAvailable.
+  9. Credit Card Summary is authoritative backend-generated data. When asked how many credit cards the user has, count the cards listed in this section. Never infer the number of cards from credit-card payment or purchase transactions.
+  
+${creditCardSummaryMarkdown}
+
+  Category Spending Totals (Already Calculated):
 This Week (${formatLocal(weekStart)} to ${formatLocal(weekEnd)}): ${JSON.stringify(catSpendingThisWeek)}
 This Month (${formatLocal(monthStart)} to ${formatLocal(monthEnd)}): ${JSON.stringify(catSpendingThisMonth)}
 Last Month (${formatLocal(lastMonthStart)} to ${formatLocal(lastMonthEnd)}): ${JSON.stringify(catSpendingLastMonth)}
