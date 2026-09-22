@@ -276,6 +276,105 @@ function renderAnalytics() {
        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
      });
   }
+
+    const ccContainer = $('dashboardCCContent');
+    if (ccContainer) {
+      if (!state.creditCards || state.creditCards.length === 0) {
+        ccContainer.innerHTML = `
+          <div style="text-align:center; padding: 10px;">
+            <p class="muted" style="margin-bottom: 10px; font-size: 13px;">No credit cards added</p>
+            <button class="secondary-button" style="width: auto; padding: 0.4rem 0.8rem; font-size: 12px;" onclick="document.querySelector('.tab[data-tab=\\'creditcards\\']').click()">Go to Credit Cards</button>
+          </div>
+        `;
+      } else {
+        let totalLimit = 0;
+        let totalCurrent = 0;
+        let dueCount = 0;
+        let overdueCount = 0;
+        let paidCount = 0;
+        
+        let mostImportantCard = null;
+        
+        for (const c of state.creditCards) {
+           const limit = Number(c.creditLimit) || 0;
+           const current = Number(c.currentBalance) || 0;
+           totalLimit += limit;
+           totalCurrent += current;
+           
+           const status = c.paymentStatus || '';
+           if (status.includes('Overdue')) overdueCount++;
+           else if (status === 'Paid') paidCount++;
+           else if (status !== 'No Due') dueCount++;
+           
+           if (!mostImportantCard) {
+             mostImportantCard = c;
+           } else {
+             const isCOverdue = c.paymentStatus && c.paymentStatus.includes('Overdue');
+             const isMOverdue = mostImportantCard.paymentStatus && mostImportantCard.paymentStatus.includes('Overdue');
+             if (isCOverdue && !isMOverdue) {
+                mostImportantCard = c;
+             } else if (isCOverdue === isMOverdue) {
+                const dC = c.daysUntilDue !== null && c.daysUntilDue !== undefined ? c.daysUntilDue : Infinity;
+                const dM = mostImportantCard.daysUntilDue !== null && mostImportantCard.daysUntilDue !== undefined ? mostImportantCard.daysUntilDue : Infinity;
+                if (dC < dM) {
+                   mostImportantCard = c;
+                }
+             }
+           }
+        }
+        
+        const totalAvailable = Math.max(0, totalLimit - totalCurrent);
+        let overallUtil = totalLimit > 0 ? (totalCurrent / totalLimit) * 100 : 0;
+        if (!isFinite(overallUtil) || isNaN(overallUtil)) overallUtil = 0;
+        
+        let utilColor = 'var(--text)';
+        if (overallUtil >= 90) utilColor = 'var(--danger)';
+        else if (overallUtil >= 50) utilColor = '#f59e0b';
+
+        const importantCardHtml = mostImportantCard ? `
+          <div style="margin-top: 15px; padding-top: 12px; border-top: 1px dashed var(--border);">
+            <div style="font-size: 11px; color: var(--muted); margin-bottom: 6px; font-weight: 600; letter-spacing: 0.5px;">UPCOMING / IMPORTANT</div>
+            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+               <strong>${esc(mostImportantCard.name)} (•••• ${esc(mostImportantCard.last4)})</strong>
+               <span style="color: ${mostImportantCard.paymentStatus && mostImportantCard.paymentStatus.includes('Overdue') ? 'var(--danger)' : 'var(--text)'}; font-weight: 600;">
+                 ${mostImportantCard.paymentStatus || '-'}
+               </span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
+               <span class="muted">Due: ${mostImportantCard.dueDate || '-'}</span>
+               <span class="muted">${mostImportantCard.nextDueDate ? new Date(mostImportantCard.nextDueDate).toLocaleDateString() : '-'}</span>
+            </div>
+          </div>
+        ` : '';
+
+        ccContainer.innerHTML = `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px;">
+            <div>
+              <div style="font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px;">TOTAL OUTSTANDING</div>
+              <div style="font-size: 16px; font-weight: bold; margin-top: 2px;">${money(totalCurrent)}</div>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px;">TOTAL AVAILABLE</div>
+              <div style="font-size: 16px; font-weight: bold; margin-top: 2px;">${money(totalAvailable)}</div>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px;">TOTAL LIMIT</div>
+              <div style="font-size: 14px; margin-top: 2px;">${money(totalLimit)}</div>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px;">UTILIZATION</div>
+              <div style="font-size: 14px; font-weight: 600; color: ${utilColor}; margin-top: 2px;">${overallUtil.toFixed(2)}%</div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 12px; background: var(--bg); padding: 10px; border-radius: 6px;">
+            <div style="text-align: center;"><div style="color: var(--danger); font-weight: bold; font-size: 14px;">${overdueCount}</div><div class="muted" style="font-size: 10px; text-transform: uppercase;">Overdue</div></div>
+            <div style="text-align: center;"><div style="font-weight: bold; font-size: 14px;">${dueCount}</div><div class="muted" style="font-size: 10px; text-transform: uppercase;">Due</div></div>
+            <div style="text-align: center;"><div style="color: var(--primary); font-weight: bold; font-size: 14px;">${paidCount}</div><div class="muted" style="font-size: 10px; text-transform: uppercase;">Paid</div></div>
+          </div>
+          ${importantCardHtml}
+        `;
+      }
+    }
 }
 
 async function removeItem(type,id){
@@ -935,8 +1034,8 @@ window.deleteCC = async (id) => {
   if (!confirm('Are you sure you want to delete this credit card?')) return;
   try {
     await api('credit-cards/' + id, { method: 'DELETE' });
-    state.creditCards = state.creditCards.filter(x => x._id !== id);
-    renderCreditCards();
+    await reloadAnalytics();
+    render();
     toast('Credit card deleted');
   } catch(e) { toast(e.message); }
 };
@@ -962,16 +1061,14 @@ if ($('ccForm')) {
     const id = $('ccId').value;
     try {
       if (id) {
-        const updated = await api('credit-cards/' + id, { method: 'PUT', body: JSON.stringify(body) });
-        const idx = state.creditCards.findIndex(x => x._id === id);
-        if (idx >= 0) state.creditCards[idx] = updated;
+        await api('credit-cards/' + id, { method: 'PUT', body: JSON.stringify(body) });
         toast('Credit card updated');
       } else {
-        const created = await api('credit-cards', { method: 'POST', body: JSON.stringify(body) });
-        state.creditCards.unshift(created);
+        await api('credit-cards', { method: 'POST', body: JSON.stringify(body) });
         toast('Credit card added');
       }
-      renderCreditCards();
+      await reloadAnalytics();
+      render();
       $('ccDialog').close();
     } catch(err) {
       toast(err.message);
@@ -1035,3 +1132,4 @@ if ($('payCCForm')) {
     }
   };
 }
+
