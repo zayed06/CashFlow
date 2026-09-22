@@ -916,7 +916,7 @@ function renderCreditCards() {
     const current = (typeof c.currentBalance === 'number') ? c.currentBalance : 0;
     const limit = (typeof c.creditLimit === 'number' && c.creditLimit > 0) ? c.creditLimit : 0;
     
-    const availableCredit = limit - current;
+    const availableCredit = Math.max(0, limit - current);
     let utilRaw = (limit > 0) ? (current / limit) * 100 : 0;
     if (!isFinite(utilRaw) || isNaN(utilRaw)) utilRaw = 0;
     
