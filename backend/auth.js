@@ -57,10 +57,11 @@ export async function getCurrentUser(request) {
   if (!token) return null;
   const session = await Session.findOne({ tokenHash: tokenHash(token), expiresAt: { $gt: new Date() } });
   if (!session) return null;
-  return User.findById(session.userId).select('_id name email currency createdAt');
+  return User.findById(session.userId).select('_id name email currency dateFormat numberFormat notificationPreferences createdAt');
 }
 
 export async function logout(request) {
   const token = getCookie(request, 'cashflow_session');
   if (token) await Session.deleteOne({ tokenHash: tokenHash(token) });
 }
+

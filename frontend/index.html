@@ -465,12 +465,17 @@
     </section>
 
     <section id="budget" class="tab-panel container">
-      <div class="card"><div class="card-title">Set Monthly Budget</div>
-        <form id="budgetForm" class="form-grid">
-          <input id="budgetAmount" type="number" min="0" step="0.01" placeholder="Monthly Budget" required>
-          <button class="primary-button" type="submit">Save Budget</button>
-        </form>
-      </div>
+              <div class="card"><div class="card-title">Set Monthly Budget</div>
+          <form id="budgetForm">
+            <div style="margin-bottom: 15px;">
+              <input id="budgetAmount" type="number" min="0" step="0.01" placeholder="Monthly Budget" required style="width: 100%; padding: 0.8rem; border-radius: 6px; border: 1px solid var(--border); box-sizing: border-box;">
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button class="primary-button" type="submit" style="flex: 1;">Save Budget</button>
+              <button class="secondary-button" type="button" id="resetBudgetBtn" onclick="event.preventDefault(); window.resetMonthlyBudget();" style="flex: 1;">Reset Budget</button>
+            </div>
+          </form>
+        </div>
 
       <div class="card" style="margin-top: 1rem;"><div class="card-title">Custom Categories</div>
         <form id="categoryForm" class="form-grid" style="margin-bottom: 1rem;">
@@ -518,7 +523,53 @@
           </label>
         </div>
 
-        <div class="section-heading" style="margin-top: 5px;">Appearance</div>
+        <div class="section-heading" style="margin-top: 25px;">Date & Number Format</div>
+          <div class="form-grid" style="margin-bottom: 20px;">
+            <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600;">
+              Date Format
+              <select id="dateFormatSelect" style="width: 100%; max-width: 300px;" onchange="updateFormatSettings()">
+                <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+              </select>
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600;">
+              Number Format
+              <select id="numberFormatSelect" style="width: 100%; max-width: 300px;" onchange="updateFormatSettings()">
+                <option value="Indian">Indian</option>
+                <option value="International">International</option>
+              </select>
+            </label>
+          </div>
+
+          
+        <div class="section-heading" style="margin-top: 25px;">Notifications</div>
+        <div class="form-grid" style="margin-bottom: 20px;">
+          <label style="display: flex; justify-content: space-between; align-items: center; max-width: 300px; font-size: 13px; font-weight: 600;">
+            Subscription reminders
+            <select id="prefSubReminders" style="width: auto;" onchange="updateNotificationSettings()">
+              <option value="true">ON</option>
+              <option value="false">OFF</option>
+            </select>
+          </label>
+          <label style="display: flex; justify-content: space-between; align-items: center; max-width: 300px; font-size: 13px; font-weight: 600;">
+            Budget alerts
+            <select id="prefBudgetAlerts" style="width: auto;" onchange="updateNotificationSettings()">
+              <option value="true">ON</option>
+              <option value="false">OFF</option>
+            </select>
+          </label>
+          <label style="display: flex; justify-content: space-between; align-items: center; max-width: 300px; font-size: 13px; font-weight: 600;">
+            Credit card due reminders
+            <select id="prefCCReminders" style="width: auto;" onchange="updateNotificationSettings()">
+              <option value="true">ON</option>
+              <option value="false">OFF</option>
+            </select>
+          </label>
+          
+        </div>
+
+          <div class="section-heading" style="margin-top: 5px;">Appearance</div>
         <div class="form-grid" style="margin-bottom: 20px;">
           <button id="themeButton" class="secondary-button" style="width: max-content; padding: 10px 18px;">Toggle Dark Mode</button>
         </div>
@@ -627,9 +678,12 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/app.js?v=1790183054460"></script>
 </body>
 </html>
+
+
+
 
 
 

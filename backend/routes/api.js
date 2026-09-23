@@ -52,7 +52,7 @@ async function processCreditCardAlerts(user) {
                 const ref = `${card.nextStatementDate.toISOString().slice(0,10)}`;
                 const exists = await Notification.exists({ userId: user._id, relatedId: card._id, alertType: 'upcoming_statement', referenceDate: ref });
                 if (!exists) {
-                    await Notification.create({ userId: user._id, message: msg, type: 'info', relatedId: card._id, alertType: 'upcoming_statement', referenceDate: ref });
+                    if (user.notificationPreferences?.creditCardDueReminders !== false) await Notification.create({ userId: user._id, message: msg, type: 'info', relatedId: card._id, alertType: 'upcoming_statement', referenceDate: ref });
                 }
             }
 
@@ -61,19 +61,19 @@ async function processCreditCardAlerts(user) {
                 if (card.daysUntilDue > 0 && card.daysUntilDue <= 3) {
                     const msg = `${card.name} payment of ${cur} ${card.statementBalance} is due in ${card.daysUntilDue} days.`;
                     const exists = await Notification.exists({ userId: user._id, relatedId: card._id, alertType: 'payment_due', referenceDate: dueRef });
-                    if (!exists) await Notification.create({ userId: user._id, message: msg, type: 'warning', relatedId: card._id, alertType: 'payment_due', referenceDate: dueRef });
+                    if (!exists && user.notificationPreferences?.creditCardDueReminders !== false) await Notification.create({ userId: user._id, message: msg, type: 'warning', relatedId: card._id, alertType: 'payment_due', referenceDate: dueRef });
                 }
                 
                 if (card.daysUntilDue === 0) {
                     const msg = `${card.name} payment of ${cur} ${card.statementBalance} is due today.`;
                     const exists = await Notification.exists({ userId: user._id, relatedId: card._id, alertType: 'due_today', referenceDate: dueRef });
-                    if (!exists) await Notification.create({ userId: user._id, message: msg, type: 'warning', relatedId: card._id, alertType: 'due_today', referenceDate: dueRef });
+                    if (!exists && user.notificationPreferences?.creditCardDueReminders !== false) await Notification.create({ userId: user._id, message: msg, type: 'warning', relatedId: card._id, alertType: 'due_today', referenceDate: dueRef });
                 }
                 
                 if (card.daysUntilDue < 0) {
                     const msg = `${card.name} payment is overdue.`;
                     const exists = await Notification.exists({ userId: user._id, relatedId: card._id, alertType: 'overdue', referenceDate: dueRef });
-                    if (!exists) await Notification.create({ userId: user._id, message: msg, type: 'warning', relatedId: card._id, alertType: 'overdue', referenceDate: dueRef });
+                    if (!exists && user.notificationPreferences?.creditCardDueReminders !== false) await Notification.create({ userId: user._id, message: msg, type: 'warning', relatedId: card._id, alertType: 'overdue', referenceDate: dueRef });
                 }
             }
 
@@ -87,7 +87,7 @@ async function processCreditCardAlerts(user) {
                 const msg = `${card.name} statement generated for ${cur} ${card.statementBalance}.`;
                 const ref = `${card.lastStatementDate.toISOString().slice(0,10)}`;
                 const exists = await Notification.exists({ userId: user._id, relatedId: card._id, alertType: 'statement_generated', referenceDate: ref });
-                if (!exists) await Notification.create({ userId: user._id, message: msg, type: 'info', relatedId: card._id, alertType: 'statement_generated', referenceDate: ref });
+                if (!exists && user.notificationPreferences?.creditCardDueReminders !== false) await Notification.create({ userId: user._id, message: msg, type: 'info', relatedId: card._id, alertType: 'statement_generated', referenceDate: ref });
             }
         }
     } catch(e) {
@@ -97,7 +97,8 @@ async function processCreditCardAlerts(user) {
     }
 }
 
-async function processDueSubscriptions(userId) {
+async function processDueSubscriptions(user) {
+    const userId = user._id;
   if (processingLocks.has(userId.toString())) return;
   processingLocks.add(userId.toString());
   try {
@@ -112,7 +113,7 @@ async function processDueSubscriptions(userId) {
   for (const sub of upcomingSubs) {
     const msg = `${sub.name} payment of ₹${sub.amount} is due tomorrow.`;
     const exists = await Notification.exists({ userId, relatedId: sub._id, message: msg });
-    if (!exists) await Notification.create({ userId, message: msg, type: 'info', relatedId: sub._id });
+    if (!exists && user.notificationPreferences?.subscriptionReminders !== false) await Notification.create({ userId, message: msg, type: 'info', relatedId: sub._id });
   }
 
   // Process due subscriptions
@@ -136,7 +137,7 @@ async function processDueSubscriptions(userId) {
       const msg = `${sub.name} payment of ₹${sub.amount} was processed.`;
       const dateMsg = `${msg} [${sub.date}]`; // ensure uniqueness for multiple missed cycles
       const exists = await Notification.exists({ userId, relatedId: sub._id, message: dateMsg });
-      if (!exists) await Notification.create({ userId, message: dateMsg, type: 'success', relatedId: sub._id });
+      if (!exists && user.notificationPreferences?.subscriptionReminders !== false) await Notification.create({ userId, message: dateMsg, type: 'success', relatedId: sub._id });
 
       if (sub.frequency && sub.frequency !== 'one-time') {
         sub.date = getNextDate(sub.date, sub.frequency);
@@ -161,19 +162,45 @@ export async function handleApi(request, response) {
   const user = await getCurrentUser(request);
   if (!user) return send(response, 401, { message: 'Please log in to continue.' });
 
-  await processDueSubscriptions(user._id);
+  await processDueSubscriptions(user);
   await processCreditCardAlerts(user);
 
     if (parts[1] === 'user' && parts[2] === 'settings' && request.method === 'PUT') {
-      const body = await readJson(request);
-      const validCurrencies = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'CAD', 'AUD', 'JPY', 'CHF'];
-      if (body.currency && validCurrencies.includes(body.currency)) {
-        user.currency = body.currency;
-        await user.save();
-      }
-      return send(response, 200, { success: true, currency: user.currency || 'INR' });
-    }
+        const body = await readJson(request);
+        const validCurrencies = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'CAD', 'AUD', 'JPY', 'CHF'];
+        
+        if (body.currency && validCurrencies.includes(body.currency)) {
+            user.currency = body.currency;
+        }
+        
+        const validDateFormats = ['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'];
+        if (body.dateFormat && validDateFormats.includes(body.dateFormat)) {
+            user.dateFormat = body.dateFormat;
+        }
+        
+        const validNumberFormats = ['Indian', 'International'];
+        if (body.numberFormat && validNumberFormats.includes(body.numberFormat)) {
+            user.numberFormat = body.numberFormat;
+        }
 
+        if (body.notificationPreferences) {
+            const allowed = ['subscriptionReminders', 'budgetAlerts', 'creditCardDueReminders'];
+            allowed.forEach(key => {
+                if (body.notificationPreferences[key] !== undefined) {
+                    user.notificationPreferences[key] = Boolean(body.notificationPreferences[key]);
+                }
+            });
+        }
+
+        await user.save();
+        return send(response, 200, { 
+            success: true, 
+            currency: user.currency || 'INR', 
+            dateFormat: user.dateFormat || 'DD/MM/YYYY', 
+            numberFormat: user.numberFormat || 'Indian',
+            notificationPreferences: user.notificationPreferences
+        });
+    }
 
   const resource = parts[1];
   const id = parts[2];
@@ -270,7 +297,7 @@ export async function handleApi(request, response) {
               statementStatus: c.statementStatus,
               paymentStatus: c.paymentStatus,
               dueDate: c.dueDate,
-              nextDueDate: c.nextDueDate ? new Date(c.nextDueDate).toLocaleDateString() : null,
+              nextDueDate: c.nextDueDate ? new Date(c.nextDueDate).toISOString().slice(0, 10) : null,
               daysUntilStatement: c.daysUntilStatement,
               daysUntilDue: c.daysUntilDue
           };
@@ -523,7 +550,7 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
         const roundedPct = Math.round(pct);
         const warnMsg = `Your monthly budget is ${roundedPct >= 100 ? 'fully' : roundedPct + '%'} used.`;
         const exists = await Notification.exists({ userId: user._id, message: warnMsg });
-        if (!exists) await Notification.create({ userId: user._id, message: warnMsg, type: pct >= 100 ? 'danger' : 'warning' });
+        if (!exists && user.notificationPreferences?.budgetAlerts !== false) await Notification.create({ userId: user._id, message: warnMsg, type: pct >= 100 ? 'danger' : 'warning' });
       }
     }
 
@@ -656,8 +683,12 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
       const body = await readJson(request);
       delete body.userId; delete body._id; delete body.createdAt; delete body.updatedAt;
 
-      if (body.amount !== undefined && !isValidAmount(Number(body.amount))) {
-        return send(response, 400, { message: 'Amount must be greater than 0' });
+      if (body.amount !== undefined) {
+        if (body.amount === null && resource === 'budgets') {
+            // allow reset
+        } else if (!isValidAmount(Number(body.amount))) {
+            return send(response, 400, { message: 'Amount must be greater than 0' });
+        }
       }
 
       let created;
@@ -688,9 +719,13 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
       else if (resource === 'categories') {
         created = await Category.create({ ...body, userId: user._id });
       }
-      else if (resource === 'budgets') {
+            else if (resource === 'budgets') {
         const { month, amount } = body;
-        created = await Budget.findOneAndUpdate({ userId: user._id, month }, { amount }, { new: true, upsert: true });
+        if (amount === null) {
+            created = await Budget.findOneAndDelete({ userId: user._id, month });
+        } else {
+            created = await Budget.findOneAndUpdate({ userId: user._id, month }, { amount }, { new: true, upsert: true });
+        }
       }
       else if (resource === 'loans') {
         created = await Loan.create({ ...body, userId: user._id });
@@ -707,17 +742,7 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
         if (!subCat) subCat = await Category.create({ userId: user._id, name: 'Subscriptions' });
 
         created = await Subscription.create({ ...body, userId: user._id, categoryId: subCat._id });
-        await processDueSubscriptions(user._id);
-
-    if (parts[1] === 'user' && parts[2] === 'settings' && request.method === 'PUT') {
-      const body = await readJson(request);
-      const validCurrencies = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'CAD', 'AUD', 'JPY', 'CHF'];
-      if (body.currency && validCurrencies.includes(body.currency)) {
-        user.currency = body.currency;
-        await user.save();
-      }
-      return send(response, 200, { success: true, currency: user.currency || 'INR' });
-    }
+        await processDueSubscriptions(user);
 
         created = await Subscription.findById(created._id);
         }
@@ -874,3 +899,4 @@ function readJson(request) {
     request.on('error', reject);
   });
 }
+

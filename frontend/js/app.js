@@ -1,7 +1,53 @@
 const state={transactions:[],subscriptions:[],loans:[],categories:[],notifications:[],creditCards:[],moneyAction:'add'};
 const $=id=>document.getElementById(id);
+
+  const style = document.createElement('style');
+  style.textContent = `
+    input[type="date"] {
+      position: relative;
+    }
+    input[type="date"]:not(:focus)::-webkit-datetime-edit {
+      color: transparent !important;
+      background: transparent !important;
+    }
+    input[type="date"]:not(:focus)::before {
+      content: attr(data-formatted-date);
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text);
+      pointer-events: none;
+      font-family: inherit;
+      font-size: inherit;
+      left: 12px;
+      letter-spacing: inherit;
+    }
+  `;
+  document.head.appendChild(style);
+
+
+  
 let userCurrency = 'INR';
-const money = n => new Intl.NumberFormat(undefined, { style: 'currency', currency: userCurrency }).format(Number(n || 0));
+let userDateFormat = 'DD/MM/YYYY';
+let userNumberFormat = 'Indian';
+
+const money = n => {
+    const locale = userNumberFormat === 'International' ? 'en-US' : 'en-IN';
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: userCurrency }).format(Number(n || 0));
+};
+
+const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + (dateStr.includes('T') ? '' : 'T12:00:00'));
+    if (isNaN(d.getTime())) return dateStr;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    if (userDateFormat === 'MM/DD/YYYY') return mm + '/' + dd + '/' + yyyy;
+    if (userDateFormat === 'YYYY-MM-DD') return yyyy + '-' + mm + '-' + dd;
+    return dd + '/' + mm + '/' + yyyy;
+};
 window.getLocalDateString = function() {
     const d = new Date();
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -20,10 +66,24 @@ async function requireAuth(){
   const response=await fetch('/api/auth/me');
   if(!response.ok){location.href='/login';return null}
   const data=await response.json();
-  $('userName').textContent=data.user.name;
+  document.getElementById('userName').textContent=data.user.name;
   userCurrency = data.user.currency || 'INR';
-  const cs = $('currencySelect');
+  userDateFormat = data.user.dateFormat || 'DD/MM/YYYY';
+    userNumberFormat = data.user.numberFormat || 'Indian';
+
+  const cs = document.getElementById('currencySelect');
   if (cs) cs.value = userCurrency;
+  const dfs = document.getElementById('dateFormatSelect');
+  if (dfs) dfs.value = userDateFormat;
+    const nfs = document.getElementById('numberFormatSelect');
+  if (nfs) nfs.value = userNumberFormat;
+
+    const prefs = data.user.notificationPreferences || {};
+    if ($('prefSubReminders')) $('prefSubReminders').value = prefs.subscriptionReminders !== false ? "true" : "false";
+    if ($('prefBudgetAlerts')) $('prefBudgetAlerts').value = prefs.budgetAlerts !== false ? "true" : "false";
+    if ($('prefCCReminders')) $('prefCCReminders').value = prefs.creditCardDueReminders !== false ? "true" : "false";
+        
+
 
   document.body.style.display = '';
   return data.user;
@@ -65,7 +125,21 @@ function calculate(){
   return { balance: 0, spent: 0 };
 }
 
+
+function updateDateInputsLang() {
+    document.querySelectorAll('input[type="date"]').forEach(el => {
+        el.setAttribute('data-formatted-date', formatDate(el.value));
+        if (!el.dataset.hasDateListener) {
+            el.addEventListener('input', () => el.setAttribute('data-formatted-date', formatDate(el.value)));
+            el.addEventListener('change', () => el.setAttribute('data-formatted-date', formatDate(el.value)));
+            el.dataset.hasDateListener = 'true';
+        }
+    });
+}
+
 function render(){
+    updateDateInputsLang();
+
   const c=calculate();
   $('balance').textContent=money(c.balance);
     const tb = $('topbarBalance'); if (tb) tb.textContent = '💰 Current Balance: ' + money(c.balance);
@@ -128,13 +202,13 @@ function renderTransactions(){
         }
     }
     const editBtn = `<button class="delete" onclick="openEditTx('${t._id}')" style="color:var(--primary)">Edit</button>`;
-    return `<div class="item"><div class="item-main"><strong>${esc(t.description)}</strong><span>${renderTypeLabel} · ${new Date(t.date).toLocaleDateString('en-IN')}${catName}${paymentBadge}</span></div><div class="item-right"><span class="amount">${amtSign}${money(t.amount)}</span>${editBtn}<button class="delete" onclick="removeItem('transactions','${t._id}')">Delete</button></div></div>`
+    return `<div class="item"><div class="item-main"><strong>${esc(t.description)}</strong><span>${renderTypeLabel} · ${formatDate(t.date)}${catName}${paymentBadge}</span></div><div class="item-right"><span class="amount">${amtSign}${money(t.amount)}</span>${editBtn}<button class="delete" onclick="removeItem('transactions','${t._id}')">Delete</button></div></div>`
   }).join('')||empty('No transactions found.')
 }
 
 function renderSubscriptions(){
   $('subscriptionList').innerHTML=state.subscriptions.map(s=>
-    `<div class="item"><div class="item-main"><strong>${esc(s.name)}</strong><span>${money(s.amount)} · ${s.frequency} · Next: ${s.date}</span></div><div class="item-right"><span class="status">${s.active?'Active':'Paused'}</span><button class="delete" onclick="toggleSub('${s._id}',${!s.active})">${s.active?'Pause':'Resume'}</button><button class="delete" onclick="removeItem('subscriptions','${s._id}')">Delete</button></div></div>`
+    `<div class="item"><div class="item-main"><strong>${esc(s.name)}</strong><span>${money(s.amount)} · ${s.frequency} · Next: ${formatDate(s.date)}</span></div><div class="item-right"><span class="status">${s.active?'Active':'Paused'}</span><button class="delete" onclick="toggleSub('${s._id}',${!s.active})">${s.active?'Pause':'Resume'}</button><button class="delete" onclick="removeItem('subscriptions','${s._id}')">Delete</button></div></div>`
   ).join('')||empty('No subscriptions yet.')
 }
 
@@ -177,7 +251,7 @@ function renderNotifications() {
         <span style="font-size: 13px; color: var(${n.type === 'danger' || n.type === 'warning' ? '--danger' : n.type === 'success' ? '--primary' : '--text'})">${esc(n.message)}</span>
         ${!n.read ? `<button class="delete" style="color:var(--primary); font-size:11px;" onclick="markNotificationRead('${n._id}')">Read</button>` : ''}
       </div>
-      <small class="muted" style="font-size:10px; margin-top: 4px;">${new Date(n.createdAt).toLocaleString()}</small>
+      <small class="muted" style="font-size:10px; margin-top: 4px;">${formatDate(n.createdAt)}</small>
     </div>`
   ).join('') : empty('No notifications.');
 }
@@ -260,7 +334,7 @@ function renderAnalytics() {
   $('loanOutstanding').textContent = money(loans.outstanding);
 
   $('upcomingSubList').innerHTML = upcomingSubscriptions.length ? upcomingSubscriptions.map(s => 
-    `<div class="item"><div class="item-main"><strong>${esc(s.name)}</strong><span>${money(s.amount)} · ${s.frequency} · Due: ${s.date}</span></div></div>`
+    `<div class="item"><div class="item-main"><strong>${esc(s.name)}</strong><span>${money(s.amount)} · ${s.frequency} · Due: ${formatDate(s.date)}</span></div></div>`
   ).join('') : empty('No upcoming subscriptions.');
 
   if (spendingChartInstance) spendingChartInstance.destroy();
@@ -357,7 +431,7 @@ function renderAnalytics() {
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
                <span class="muted">Due: ${mostImportantCard.dueDate || '-'}</span>
-               <span class="muted">${mostImportantCard.nextDueDate ? new Date(mostImportantCard.nextDueDate).toLocaleDateString() : '-'}</span>
+               <span class="muted">${mostImportantCard.nextDueDate ? formatDate(mostImportantCard.nextDueDate) : '-'}</span>
             </div>
           </div>
         ` : '';
@@ -794,9 +868,11 @@ function getCatPeriodDates() {
       label: start.getFullYear().toString()
     };
   } else if (catPeriodType === 'week') {
-    const current = new Date();
-    current.setDate(current.getDate() - current.getDay() + (catPeriodOffset * 7));
-    const start = new Date(current);
+      const current = new Date();
+      let dayIndex = current.getDay();
+      dayIndex = dayIndex === 0 ? 6 : dayIndex - 1;
+      current.setDate(current.getDate() - dayIndex + (catPeriodOffset * 7));
+      const start = new Date(current);
     const end = new Date(current);
     end.setDate(end.getDate() + 6);
     
@@ -921,6 +997,27 @@ async function updateCurrency() {
   }
 }
 window.updateCurrency = updateCurrency;
+
+window.updateFormatSettings = async function() {
+  try {
+    const dfs = document.getElementById('dateFormatSelect').value;
+        const nfs = document.getElementById('numberFormatSelect').value;
+    
+    const res = await api('user/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ dateFormat: dfs, numberFormat: nfs })
+    });
+    if (res.success) {
+      userDateFormat = res.dateFormat || 'DD/MM/YYYY';
+            userNumberFormat = res.numberFormat || 'Indian';
+      render();
+      if (typeof reloadAnalytics !== 'undefined') await reloadAnalytics();
+      if (typeof toast !== 'undefined') toast('Format settings updated');
+    }
+  } catch (e) {
+    if (typeof toast !== 'undefined') toast(e.message);
+  }
+};
 
 function renderCreditCards() {
   const ccList = $('ccList');
@@ -1100,6 +1197,29 @@ if ($('ccForm')) {
       btn.disabled = false;
     }
   };
+
+
+window.updateNotificationSettings = async function() {
+    try {
+        const body = {
+            notificationPreferences: {
+                subscriptionReminders: $('prefSubReminders').value === 'true',
+                budgetAlerts: $('prefBudgetAlerts').value === 'true',
+                creditCardDueReminders: $('prefCCReminders').value === 'true'
+            }
+        };
+        const res = await api('user/settings', { method: 'PUT', body: JSON.stringify(body) });
+        if (res.success) {
+            if (typeof toast !== 'undefined') toast('Notification preferences saved');
+        } else {
+            throw new Error(res.message || 'Failed to save');
+        }
+    } catch(e) {
+        if (typeof toast !== 'undefined') toast(e.message);
+        requireAuth();
+    }
+};
+
 }
 
 $('expenseType').onchange = function() {
@@ -1236,10 +1356,7 @@ window.toggleLensNode = function(type) {
                 data.upcomingCommitments.forEach(c => {
                     let dateStr = '';
                     if (c.date) {
-                        const d = new Date(c.date + 'T12:00:00');
-                        const day = d.getDate();
-                        const month = d.toLocaleString('en-US', { month: 'short' });
-                        dateStr = ' &middot; ' + day + ' ' + month;
+                        dateStr = ' &middot; ' + formatDate(c.date);
                     }
                     html += '<div style="display: flex; justify-content: space-between; margin-bottom: 2px;"><span>' + c.name + '</span><span>' + money(c.amount) + dateStr + '</span></div>';
                 });
@@ -1475,10 +1592,7 @@ window.renderLensState = function() {
         data.upcomingCommitments.forEach(c => {
             let dateStr = '';
             if (c.date) {
-                const d = new Date(c.date + 'T12:00:00');
-                const day = d.getDate();
-                const month = d.toLocaleString('en-US', { month: 'short' });
-                dateStr = ' &middot; ' + day + ' ' + month;
+                dateStr = ' &middot; ' + formatDate(c.date);
             }
             html += '<div style="display: flex; justify-content: space-between; margin-bottom: 2px;"><span>' + esc(c.name) + '</span><span>' + money(c.amount) + dateStr + '</span></div>';
         });
@@ -1610,4 +1724,40 @@ window.updateLensProjectedBalance = function() {
 
 
 
+
+
+
+
+
+
+
+
+
+  
+
+
+
+window.resetMonthlyBudget = async () => {
+    if (!confirm('Reset your monthly budget?')) return;
+    const resetBtn = $('resetBudgetBtn');
+    if (resetBtn) resetBtn.disabled = true;
+    try {
+        const today = new Date();
+        const month = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+        
+        // Disable form validation temporarily to prevent interference if it somehow triggers
+        $('budgetAmount').removeAttribute('required');
+        
+        await api('budgets', { method: 'POST', body: JSON.stringify({ month, amount: null }) });
+        $('budgetAmount').value = '';
+        await reloadAnalytics();
+        render(); 
+        toast('Budget reset');
+    } catch(e) {
+        toast(e.message);
+    } finally {
+        if (resetBtn) resetBtn.disabled = false;
+        $('budgetAmount').setAttribute('required', 'true');
+    }
+};
 

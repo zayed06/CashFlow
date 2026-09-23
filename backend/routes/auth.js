@@ -101,7 +101,7 @@ export function send(response, status, data) {
   return true;
 }
 
-function safeUser(user) { return { id: user._id, name: user.name, email: user.email, currency: user.currency || 'INR', createdAt: user.createdAt }; }
+function safeUser(user) { return { id: user._id, name: user.name, email: user.email, currency: user.currency || 'INR', dateFormat: user.dateFormat || 'DD/MM/YYYY', firstDayOfWeek: user.firstDayOfWeek || 'Monday', numberFormat: user.numberFormat || 'Indian', createdAt: user.createdAt }; }
 
 function readJson(request) {
   return new Promise((resolve, reject) => {
@@ -111,3 +111,4 @@ function readJson(request) {
     request.on('error', reject);
   });
 }
+
