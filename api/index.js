@@ -1,3 +1,3 @@
-const handler = require('../backend/server.js');
+import handler from '../backend/server.js';
 
-module.exports = handler;
+export default handler;
