@@ -99,9 +99,21 @@ async function migrateLegacyData() {
   }
 }
 
-connectDatabase(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cashflow')
-  .then(async () => {
-    await migrateLegacyData();
+const init = async () => {
+  await connectDatabase(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cashflow');
+  await migrateLegacyData();
+};
+
+if (!process.env.VERCEL) {
+  init().then(() => {
     server.listen(port, () => console.log(`CashFlow running at http://localhost:${port}`));
-  })
-  .catch(error => { console.error('MongoDB connection failed:', error.message); process.exit(1); });
+  }).catch(error => { 
+    console.error('MongoDB connection failed:', error.message); 
+    process.exit(1); 
+  });
+}
+
+export default async function handler(request, response) {
+  await init();
+  server.emit('request', request, response);
+}

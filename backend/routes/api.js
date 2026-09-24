@@ -495,6 +495,7 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
 
     const monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
     const budgetDoc = await Budget.findOne({ userId: user._id, month: monthStr });
+    const budgetResetAt = budgetDoc && budgetDoc.resetAt ? new Date(budgetDoc.resetAt).getTime() : null;
     const categories = await Category.find({ userId: user._id });
     const catMap = {};
     categories.forEach(c => catMap[c._id.toString()] = c.name);
@@ -515,6 +516,7 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
     txs.forEach(t => {
       const d = new Date(t.date);
       const isCurrentMonth = d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      const isAfterReset = budgetResetAt && t.createdAt ? new Date(t.createdAt).getTime() >= budgetResetAt : true;
       
       // Spending breakdown (all time)
       if (t.type === 'expense') totalExpenses += t.amount;
@@ -524,10 +526,14 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
       // Monthly summary
       if (isCurrentMonth) {
         if (['add_money', 'income'].includes(t.type)) monthlyIncome += t.amount;
-        if (['expense', 'deduct_money'].includes(t.type)) monthlySpent += t.amount;
-        if (t.type === 'subscription') { monthlySpent += t.amount; monthlySubs += t.amount; }
+        if (isAfterReset) {
+          if (['expense', 'deduct_money'].includes(t.type)) monthlySpent += t.amount;
+          if (t.type === 'subscription') { monthlySpent += t.amount; }
+          if (t.type === 'loan_given') { monthlySpent += t.amount; }
+        }
+        if (t.type === 'subscription') { monthlySubs += t.amount; }
         if (t.type === 'loan_repayment') monthlyLoanRepayments += t.amount;
-        if (t.type === 'loan_given') { monthlySpent += t.amount; monthlyLent += t.amount; }
+        if (t.type === 'loan_given') { monthlyLent += t.amount; }
       }
 
       // Category spending (dynamic period)
@@ -722,7 +728,7 @@ Transactions: ${JSON.stringify(simplifiedTxs)}`;
             else if (resource === 'budgets') {
         const { month, amount } = body;
         if (amount === null) {
-            created = await Budget.findOneAndDelete({ userId: user._id, month });
+            created = await Budget.findOneAndUpdate({ userId: user._id, month }, { resetAt: new Date() }, { new: true });
         } else {
             created = await Budget.findOneAndUpdate({ userId: user._id, month }, { amount }, { new: true, upsert: true });
         }
