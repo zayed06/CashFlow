@@ -2,14 +2,14 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "functions": {
-    "backend/server.js": {
+    "api/index.js": {
       "includeFiles": "frontend/**"
     }
   },
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/backend/server.js"
+      "dest": "/api/index.js"
     }
   ]
 }
